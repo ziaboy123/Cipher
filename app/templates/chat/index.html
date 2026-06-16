@@ -1,0 +1,18 @@
+{% extends "app_shell.html" %}
+{% block title %}Cipher{% endblock %}
+{% block shell_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/chat.css') }}">
+{% endblock %}
+
+{% block main %}
+<div class="empty-state">
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style="color: var(--c-border);">
+    <path d="M4 8a4 4 0 014-4h16a4 4 0 014 4v12a4 4 0 01-4 4H10l-6 4V8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>
+  <div>
+    <p class="empty-state-title">No conversations</p>
+    <p class="empty-state-body">Search for someone to start a private conversation.</p>
+  </div>
+  <a href="{{ url_for('users.search') }}" class="btn btn-secondary">Find people</a>
+</div>
+{% endblock %}

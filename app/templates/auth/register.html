@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Create account — Cipher{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/auth.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="auth-wordmark">Cipher</span>
+      <p class="auth-tagline">Private by design.</p>
+    </div>
+
+    <form class="auth-form" method="POST" action="{{ url_for('auth.register') }}" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="auth-form-title">Create account</div>
+
+      <div class="field">
+        <label class="field-label" for="display_name">Display name</label>
+        {{ form.display_name(id="display_name", class="input input-lg", placeholder="Alex Kim", autocomplete="name", autofocus=true) }}
+        {% if form.display_name.errors %}
+          <span class="field-error">{{ form.display_name.errors[0] }}</span>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="username">Username</label>
+        {{ form.username(id="username", class="input input-lg", placeholder="alex_kim", autocomplete="username") }}
+        {% if form.username.errors %}
+          <span class="field-error">{{ form.username.errors[0] }}</span>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="email">Email</label>
+        {{ form.email(id="email", class="input input-lg", placeholder="alex@example.com", autocomplete="email") }}
+        {% if form.email.errors %}
+          <span class="field-error">{{ form.email.errors[0] }}</span>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="password">Password</label>
+        {{ form.password(id="password", class="input input-lg", placeholder="At least 8 characters", autocomplete="new-password") }}
+        {% if form.password.errors %}
+          <span class="field-error">{{ form.password.errors[0] }}</span>
+        {% endif %}
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="confirm">Confirm password</label>
+        {{ form.confirm(id="confirm", class="input input-lg", placeholder="Repeat password", autocomplete="new-password") }}
+        {% if form.confirm.errors %}
+          <span class="field-error">{{ form.confirm.errors[0] }}</span>
+        {% endif %}
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-lg btn-full">Create account</button>
+    </form>
+
+    <p class="auth-footer">
+      Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

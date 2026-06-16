@@ -1,0 +1,187 @@
+/* ── Chat room ── */
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--c-border);
+  flex-shrink: 0;
+  min-height: 57px;
+}
+
+.chat-header-info { flex: 1; min-width: 0; }
+.chat-header-name {
+  font-size: var(--text-14);
+  font-weight: 500;
+  color: var(--c-emphasis);
+  letter-spacing: -0.01em;
+}
+.chat-header-status {
+  font-size: var(--text-12);
+  color: var(--c-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.chat-header-status.online { color: var(--c-online); }
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Message groups: consecutive messages from same sender merge visually */
+.msg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--sp-4);
+}
+
+.msg-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+  padding-left: 40px;
+}
+.msg-sender {
+  font-size: var(--text-13);
+  font-weight: 500;
+  color: var(--c-emphasis);
+}
+.msg-time {
+  font-size: var(--text-11);
+  color: var(--c-muted);
+}
+
+.msg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.msg-avatar-slot {
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.msg-bubble {
+  font-size: var(--text-14);
+  color: var(--c-primary);
+  line-height: 1.55;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--c-raised);
+  max-width: 480px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.msg-bubble.own {
+  background: var(--c-emphasis);
+  color: var(--c-bg);
+  margin-left: auto;
+}
+
+.msg-own .msg-avatar-slot { display: none; }
+.msg-own { flex-direction: row-reverse; }
+.msg-own .msg-group-header { padding-left: 0; padding-right: 40px; }
+
+.msg-deleted {
+  font-style: italic;
+  color: var(--c-muted);
+  font-size: var(--text-13);
+}
+
+.msg-status {
+  text-align: center;
+  font-size: var(--text-12);
+  color: var(--c-muted);
+  padding: var(--sp-3) 0;
+  font-style: italic;
+}
+
+/* ── Typing indicator ── */
+.typing-indicator {
+  padding: 0 var(--sp-6) var(--sp-2);
+  min-height: 24px;
+  font-size: var(--text-12);
+  color: var(--c-muted);
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.typing-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.typing-dot {
+  width: 3px; height: 3px;
+  border-radius: var(--r-full);
+  background: var(--c-muted);
+  animation: typing-pulse 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-pulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+/* ── Message input ── */
+.chat-input-bar {
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--c-border);
+  flex-shrink: 0;
+}
+
+.chat-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--c-raised);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-2) var(--sp-3);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.chat-input-wrap:focus-within { border-color: var(--c-muted); }
+
+#message-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--text-14);
+  color: var(--c-emphasis);
+  resize: none;
+  max-height: 160px;
+  line-height: 1.5;
+}
+#message-input::placeholder { color: var(--c-muted); }
+
+.send-btn {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: var(--r-md);
+  background: var(--c-emphasis);
+  color: var(--c-bg);
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--dur-fast) var(--ease);
+}
+.send-btn:hover { background: var(--c-primary); }
+.send-btn svg { width: 14px; height: 14px; }
+
+/* ── Date separator ── */
+.date-sep {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0;
+}
+.date-sep-line { flex: 1; height: 1px; background: var(--c-border); }
+.date-sep-text { font-size: var(--text-11); color: var(--c-muted); white-space: nowrap; }

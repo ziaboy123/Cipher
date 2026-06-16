@@ -1,0 +1,44 @@
+{% extends "app_shell.html" %}
+{% block title %}Settings — Cipher{% endblock %}
+
+{% block main %}
+<div style="max-width: 480px; margin: 0 auto; padding: var(--sp-10) var(--sp-6);">
+  <h1 style="font-size: var(--text-24); font-weight: 600; color: var(--c-emphasis); letter-spacing: -0.02em; margin-bottom: var(--sp-8);">Settings</h1>
+
+  <div style="display: flex; flex-direction: column; gap: var(--sp-8);">
+    <!-- Account -->
+    <section>
+      <h2 style="font-size: var(--text-13); font-weight: 600; color: var(--c-muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: var(--sp-4);">Account</h2>
+      <div style="background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg); overflow: hidden;">
+        <div style="padding: var(--sp-4) var(--sp-5); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--c-border);">
+          <div>
+            <div style="font-size: var(--text-13); font-weight: 500; color: var(--c-primary);">Display name</div>
+            <div style="font-size: var(--text-12); color: var(--c-muted); margin-top: 2px;">{{ current_user.display_name }}</div>
+          </div>
+        </div>
+        <div style="padding: var(--sp-4) var(--sp-5); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--c-border);">
+          <div>
+            <div style="font-size: var(--text-13); font-weight: 500; color: var(--c-primary);">Username</div>
+            <div style="font-size: var(--text-12); color: var(--c-muted); margin-top: 2px;">@{{ current_user.username }}</div>
+          </div>
+        </div>
+        <div style="padding: var(--sp-4) var(--sp-5); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: var(--text-13); font-weight: 500; color: var(--c-primary);">Email</div>
+            <div style="font-size: var(--text-12); color: var(--c-muted); margin-top: 2px;">{{ current_user.email }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Danger zone -->
+    <section>
+      <h2 style="font-size: var(--text-13); font-weight: 600; color: var(--c-muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: var(--sp-4);">Session</h2>
+      <form method="POST" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger">Sign out</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/layout.css') }}">
+{% block shell_styles %}{% endblock %}
+{% endblock %}
+
+{% block body %}
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-wordmark">Cipher</span>
+      <a href="{{ url_for('users.search') }}" class="btn btn-ghost btn-sm" title="Find people">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="sidebar-list">
+      {% if conversations %}
+        <div class="sidebar-section-label">Messages</div>
+        {% for item in conversations %}
+          {% set convo = item.conversation %}
+          {% set last = item.last_message %}
+          {% set other = item.other_user %}
+          <a href="{{ url_for('chat.room', convo_id=convo.id) }}"
+             class="sidebar-item {% if active_convo_id == convo.id %}active{% endif %}">
+            <div class="avatar-wrap">
+              <div class="avatar">{{ other.initials() if other else '?' }}</div>
+              <div class="presence-dot {% if other and other.is_online %}online{% endif %}" id="dot-{{ other.id if other else 0 }}"></div>
+            </div>
+            <div class="sidebar-item-info">
+              <div class="sidebar-item-name">{{ other.display_name if other else convo.name or 'Group' }}</div>
+              {% if last %}
+                <div class="sidebar-item-preview">
+                  {% if last.type == 'text' %}
+                    {{ last.content | truncate(36, True, '…') }}
+                  {% else %}
+                    <em>{{ last.content }}</em>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      {% else %}
+        <div style="padding: var(--sp-6) var(--sp-4); font-size: var(--text-13); color: var(--c-muted); line-height: 1.6;">
+          No conversations yet.<br>
+          <a href="{{ url_for('users.search') }}" style="color: var(--c-secondary); text-decoration: underline; text-underline-offset: 3px;">Find someone to message.</a>
+        </div>
+      {% endif %}
+
+      {% if pending_requests is defined and pending_requests %}
+        <div class="sidebar-section-label" style="margin-top: var(--sp-4);">Requests</div>
+        {% for req in pending_requests %}
+          <div class="sidebar-item">
+            <div class="avatar">{{ req.requester.initials() }}</div>
+            <div class="sidebar-item-info">
+              <div class="sidebar-item-name">{{ req.requester.display_name }}</div>
+              <div class="sidebar-item-preview">wants to connect</div>
+            </div>
+            <div style="display:flex; gap: var(--sp-1); flex-shrink:0;">
+              <form method="POST" action="{{ url_for('users.accept_request', request_id=req.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-primary btn-sm">✓</button>
+              </form>
+              <form method="POST" action="{{ url_for('users.decline_request', request_id=req.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm">✕</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="avatar-wrap">
+        <div class="avatar">{{ current_user.initials() }}</div>
+        <div class="presence-dot online"></div>
+      </div>
+      <div class="sidebar-footer-name">
+        <div class="sidebar-footer-username">{{ current_user.display_name }}</div>
+        <div class="sidebar-footer-handle">@{{ current_user.username }}</div>
+      </div>
+      <form method="POST" action="{{ url_for('auth.logout') }}" style="flex-shrink:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-sm" title="Sign out">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main" id="main-content">
+    {% block main %}{% endblock %}
+  </main>
+</div>
+{% endblock %}
