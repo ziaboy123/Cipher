@@ -1,0 +1,97 @@
+.home-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-8) var(--sp-4);
+  animation: fadein var(--dur-enter) var(--ease);
+}
+
+.home-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-10);
+}
+
+/* ── Brand ── */
+.home-brand { text-align: center; }
+
+.home-wordmark {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--c-emphasis);
+  letter-spacing: 0.2em;
+  display: block;
+}
+
+.home-tagline {
+  font-size: var(--t-12);
+  color: var(--c-muted);
+  margin-top: var(--sp-2);
+  letter-spacing: 0.06em;
+}
+
+.home-invited {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: var(--t-11);
+  color: var(--c-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+.home-invited::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 4px;
+  border-radius: var(--r-full);
+  background: var(--c-live);
+}
+
+/* ── Form ── */
+.home-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.field-label {
+  display: block;
+  font-size: var(--t-11);
+  font-weight: 500;
+  color: var(--c-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-2);
+  font-family: var(--font-mono);
+}
+
+.home-or {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-1) 0;
+}
+.home-or-line {
+  flex: 1;
+  height: 1px;
+  background: var(--c-border);
+}
+.home-or-text {
+  font-size: var(--t-11);
+  color: var(--c-muted);
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+}
+
+.join-row {
+  display: flex;
+  gap: var(--sp-2);
+}
+.join-row .input { flex: 1; min-width: 0; }
+.join-row .btn   { flex-shrink: 0; }

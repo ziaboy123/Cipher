@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — CIPHER{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/room.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="room-shell" id="room-shell">
+
+  <!-- Header -->
+  <header class="room-header">
+    <div class="live-dot" id="live-dot"></div>
+
+    <div class="room-code-wrap" id="code-wrap" title="Copy room code">
+      <span class="room-code-prefix">cipher://</span>
+      <span class="room-code-value">{{ code }}</span>
+      <span class="room-code-copy" id="copy-icon">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M3 11H2a1 1 0 01-1-1V2a1 1 0 011-1h8a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </span>
+    </div>
+
+    <div class="room-header-spacer"></div>
+
+    <button class="room-members-btn" id="members-btn" type="button">
+      <span id="member-count">—</span>
+      <span>here</span>
+    </button>
+  </header>
+
+  <!-- Members popover (hidden by default) -->
+  <div class="members-popover" id="members-popover" style="display:none; position:absolute; right:16px; top:52px;">
+    <div class="popover-label">In this room</div>
+    <div id="popover-list"></div>
+  </div>
+
+  <!-- Messages -->
+  <div class="room-messages" id="messages">
+    <div class="msg-spacer"></div>
+  </div>
+
+  <!-- Typing -->
+  <div class="room-typing">
+    <div class="typing-dots" id="typing-dots">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+    <span class="typing-text" id="typing-text"></span>
+  </div>
+
+  <!-- Input -->
+  <div class="room-input-bar">
+    <div class="input-wrap">
+      <textarea
+        id="msg-input"
+        rows="1"
+        placeholder="Message"
+        autocomplete="off"
+        spellcheck="true"
+        maxlength="1000"
+      ></textarea>
+      <span class="char-counter" id="char-counter"></span>
+      <button class="send-btn" id="send-btn" type="button" title="Send">
+        <svg viewBox="0 0 16 16" fill="none">
+          <path d="M14 8L2 2l2.5 6L2 14l12-6z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const MY_NAME = {{ name | tojson }};
+  const ROOM_CODE = {{ code | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/room.js') }}"></script>
+{% endblock %}
