@@ -184,7 +184,7 @@
   padding: 7px var(--sp-3);
   border-radius: var(--r-md);
   background: var(--c-raised);
-  max-width: min(520px, 65%);
+  max-width: min(520px, 70vw);
   word-break: break-word;
   white-space: pre-wrap;
 }
