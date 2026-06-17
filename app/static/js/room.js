@@ -165,9 +165,9 @@ function showRoomClosed() {
   overlay.innerHTML =
     '<p class="room-closed-text">CHANNEL TERMINATED.</p>' +
     '<p class="room-closed-sub">This room no longer exists.</p>' +
-    '<a class="room-closed-link" href="/">Return home</a>';
+    '<a class="room-closed-link" href="/cipher/">Return home</a>';
   shell.appendChild(overlay);
-  setTimeout(() => { window.location.href = '/'; }, 4000);
+  setTimeout(() => { window.location.href = '/cipher/'; }, 4000);
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
