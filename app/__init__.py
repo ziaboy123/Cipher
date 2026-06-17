@@ -5,7 +5,7 @@ from app import csrf as _csrf
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='/cipher/static')
     app.config.from_object(Config)
 
     socketio.init_app(app, async_mode="eventlet", cors_allowed_origins="*", path="/cipher/socket.io")
