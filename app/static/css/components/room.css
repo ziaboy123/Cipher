@@ -192,7 +192,7 @@
 /* Own messages — right-aligned */
 .msg-group-own { align-items: flex-end; }
 .msg-group-own .msg-group-header { flex-direction: row-reverse; }
-.msg-group-own .msg-row { justify-content: flex-end; }
+.msg-group-own .msg-row { width: 100%; justify-content: flex-end; }
 .msg-group-own .msg-bubble {
   background: var(--c-emphasis);
   color: var(--c-bg);
