@@ -171,7 +171,7 @@ function showRoomClosed() {
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
-const socket = io({ transports: ['websocket', 'polling'] });
+const socket = io({ transports: ['websocket', 'polling'], path: '/cipher/socket.io' });
 
 socket.on('connect', () => {
   liveDot.className = 'live-dot';

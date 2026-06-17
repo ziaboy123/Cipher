@@ -8,7 +8,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    socketio.init_app(app, async_mode="eventlet", cors_allowed_origins="*")
+    socketio.init_app(app, async_mode="eventlet", cors_allowed_origins="*", path="/cipher/socket.io")
     limiter.init_app(app)
 
     # Inject csrf_token() into every template
@@ -23,8 +23,8 @@ def create_app() -> Flask:
 
     from app.routes.home import home_bp
     from app.routes.room import room_bp
-    app.register_blueprint(home_bp)
-    app.register_blueprint(room_bp)
+    app.register_blueprint(home_bp, url_prefix='/cipher')
+    app.register_blueprint(room_bp, url_prefix='/cipher')
 
     with app.app_context():
         from app.sockets import events as _  # noqa: F401
