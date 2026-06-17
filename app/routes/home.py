@@ -36,7 +36,10 @@ def create():
         return render_template("home.html", error=err, prefill_name=name)
 
     code = rooms.create(name)
+    csrf = session.get('_csrf')
     session.clear()
+    if csrf:
+        session['_csrf'] = csrf
     session["room"] = code
     session["name"] = name
     return redirect(url_for("room.view", code=code))
@@ -61,7 +64,10 @@ def join():
     if rooms.name_taken(code, name):
         return render_template("home.html", error="That name is taken in this room. Choose another.", prefill_name=name, prefill_code=code)
 
+    csrf = session.get('_csrf')
     session.clear()
+    if csrf:
+        session['_csrf'] = csrf
     session["room"] = code
     session["name"] = name
     return redirect(url_for("room.view", code=code))
