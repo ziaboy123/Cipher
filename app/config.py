@@ -9,13 +9,4 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False
-
-
-class DevelopmentConfig(Config):
     DEBUG = True
-
-
-config = {
-    "development": DevelopmentConfig,
-    "default": DevelopmentConfig,
-}

@@ -1,12 +1,12 @@
 from flask import Flask
-from app.config import config
+from app.config import Config
 from app.extensions import socketio, limiter
 from app import csrf as _csrf
 
 
-def create_app(env: str = "default") -> Flask:
-    app = Flask(__name__, instance_relative_config=True)
-    app.config.from_object(config[env])
+def create_app() -> Flask:
+    app = Flask(__name__)
+    app.config.from_object(Config)
 
     socketio.init_app(app, async_mode="eventlet", cors_allowed_origins="*")
     limiter.init_app(app)
