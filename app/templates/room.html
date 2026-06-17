@@ -73,6 +73,9 @@
 
 </div>
 
+{% endblock %}
+
+{% block scripts %}
 <script>
   const MY_NAME = {{ name | tojson }};
   const ROOM_CODE = {{ code | tojson }};
