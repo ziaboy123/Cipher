@@ -1,6 +1,6 @@
 # Cipher
 
-A privacy-first, ephemeral real-time messaging platform. No accounts. No history. No trace.
+A privacy-first, temporary real-time messaging platform. No accounts. No history. No trace.
 
 Rooms exist only while occupied — create one, share the code, talk, leave. When the last person goes, the room and everything in it is gone.
 
@@ -88,7 +88,7 @@ app/
 │   ├── base.html      # HTML shell, font loading, Socket.IO CDN
 │   ├── home.html      # CIPHER wordmark, create/join forms
 │   └── room.html      # Room header, message list, input
-├── rooms.py           # In-memory ephemeral room store
+├── rooms.py           # In-memory room store (no persistence)
 ├── csrf.py            # Lightweight CSRF without Flask-WTF
 ├── config.py          # Flask config (secret key, session cookie settings)
 ├── extensions.py      # SocketIO + Limiter instances
