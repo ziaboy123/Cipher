@@ -9,7 +9,6 @@ if (window.visualViewport) {
   const onViewportResize = () => {
     shell.style.height = window.visualViewport.height + 'px';
   };
-  onViewportResize();
   window.visualViewport.addEventListener('resize', onViewportResize);
   window.visualViewport.addEventListener('scroll', onViewportResize);
 }
