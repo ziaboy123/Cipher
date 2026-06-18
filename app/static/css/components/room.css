@@ -234,6 +234,7 @@
 .room-input-bar {
   flex-shrink: 0;
   padding: var(--sp-4) var(--sp-6);
+  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--c-border);
 }
 
