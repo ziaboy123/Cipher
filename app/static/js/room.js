@@ -2,6 +2,17 @@
 
 // MY_NAME and ROOM_CODE injected by room.html
 
+// iOS Safari keyboard fix — keyboard doesn't resize viewport, so we use
+// visualViewport to keep the shell exactly as tall as the visible area.
+if (window.visualViewport) {
+  const shell = document.getElementById('room-shell');
+  const onViewportResize = () => {
+    shell.style.height = window.visualViewport.height + 'px';
+  };
+  window.visualViewport.addEventListener('resize', onViewportResize);
+  window.visualViewport.addEventListener('scroll', onViewportResize);
+}
+
 const GROUP_TIMEOUT_MS = 90_000;
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
