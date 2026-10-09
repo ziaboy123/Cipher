@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ code }} — CIPHER{% endblock %}
 {% block styles %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/components/room.css') }}">
+<link rel="stylesheet" href="{{ asset('css/components/room.css') }}">
 {% endblock %}
 
 {% block body %}
-<div class="room-shell" id="room-shell">
+<div class="room-shell" id="room-shell" data-name="{{ name }}" data-code="{{ code }}">
 
   <!-- Header -->
   <header class="room-header">
@@ -31,7 +31,7 @@
   </header>
 
   <!-- Members popover (hidden by default) -->
-  <div class="members-popover" id="members-popover" style="display:none; position:absolute; right:16px; top:52px;">
+  <div class="members-popover" id="members-popover" hidden>
     <div class="popover-label">In this room</div>
     <div id="popover-list"></div>
   </div>
@@ -76,9 +76,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-  const MY_NAME = {{ name | tojson }};
-  const ROOM_CODE = {{ code | tojson }};
-</script>
-<script src="{{ url_for('static', filename='js/room.js') }}"></script>
+<script src="{{ asset('js/vendor/socket.io-4.7.5.min.js') }}"></script>
+<script src="{{ asset('js/room.js') }}"></script>
 {% endblock %}

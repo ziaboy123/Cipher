@@ -1,6 +1,8 @@
 'use strict';
 
-// MY_NAME and ROOM_CODE injected by room.html
+// Name and code come from data attributes (inline scripts are blocked by the CSP)
+const MY_NAME   = document.getElementById('room-shell').dataset.name;
+const ROOM_CODE = document.getElementById('room-shell').dataset.code;
 
 // iOS Safari keyboard fix — keyboard doesn't resize viewport, so we use
 // visualViewport to keep the shell exactly as tall as the visible area.
@@ -146,9 +148,9 @@ function syncMembers(names) {
 
 membersBtn.addEventListener('click', e => {
   e.stopPropagation();
-  membersPopover.style.display = membersPopover.style.display === 'none' ? 'block' : 'none';
+  membersPopover.hidden = !membersPopover.hidden;
 });
-document.addEventListener('click', () => { membersPopover.style.display = 'none'; });
+document.addEventListener('click', () => { membersPopover.hidden = true; });
 membersPopover.addEventListener('click', e => e.stopPropagation());
 
 // ── Copy room code ────────────────────────────────────────────────────────────
