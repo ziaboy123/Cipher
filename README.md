@@ -13,12 +13,12 @@ Rooms exist only while occupied — create one, share the code, talk, leave. Whe
 
 ## How It Works
 
-- Create a room → get an 8-character alphanumeric code (~218 trillion combinations)
+- Create a room → get an 8-character alphanumeric code (~2.8 trillion combinations)
 - Share the code with whoever you want in the room
 - Messages are broadcast in real time via WebSocket
 - When the last member disconnects, the room and all its messages are permanently destroyed
 
-No user accounts. No persistent identities. No server-side logs of message content.
+No user accounts. No persistent identities. No request logs, and nothing loaded from third parties.
 
 ## Quick Start
 
@@ -58,13 +58,15 @@ cp .env.example .env
 SECRET_KEY=change-me-to-a-long-random-string
 ```
 
+Settings default to production (secure cookies, no debug). For local development over plain http, add `CIPHER_DEV=1` to `.env`. Never set it on a server.
+
 ### 4. Run
 
 ```bash
 python run.py
 ```
 
-Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
+Open [http://127.0.0.1:5000/cipher/](http://127.0.0.1:5000/cipher/). Set `PORT` to use another port.
 
 ## Project Structure
 
@@ -82,10 +84,14 @@ app/
 │   │   └── components/
 │   │       ├── home.css         # Landing page styles
 │   │       └── room.css         # Room shell, messages, input bar
+│   │   ├── fonts.css            # Self-hosted Inter + JetBrains Mono
+│   ├── fonts/                   # Variable woff2 files (SIL OFL 1.1)
 │   └── js/
-│       └── room.js              # Socket client, message rendering, typing indicator
+│       ├── home.js              # Landing page form behaviour
+│       ├── room.js              # Socket client, message rendering, typing indicator
+│       └── vendor/              # Socket.IO client 4.7.5
 ├── templates/
-│   ├── base.html      # HTML shell, font loading, Socket.IO CDN
+│   ├── base.html      # HTML shell
 │   ├── home.html      # CIPHER wordmark, create/join forms
 │   └── room.html      # Room header, message list, input
 ├── rooms.py           # In-memory room store (no persistence)
@@ -99,11 +105,15 @@ run.py                 # Entrypoint — eventlet.monkey_patch() + socketio.run()
 ## Security
 
 - **CSRF** — custom token validation using `secrets.compare_digest` on all form submissions
-- **Rate limiting** — 5 room creates per hour, 20 joins per minute per IP
+- **Rate limiting** — 5 room creates per hour, 20 joins per minute per visitor IP (read from Cloudflare's `CF-Connecting-IP` behind the tunnel)
+- **Flood control** — at most 10 messages per 10 seconds per connection; Socket.IO packets capped at 16 KB
 - **XSS** — all message content rendered via `textContent`, never `innerHTML`
+- **Content Security Policy** — scripts, styles, fonts and the socket may only come from Cipher itself; no inline scripts or styles
+- **Same-origin sockets** — Socket.IO rejects connections from other sites
 - **Socket auth gate** — unauthenticated socket connections rejected on `connect`
 - **Input validation** — name (2–30 chars, restricted pattern) and message (≤1000 chars) validated server-side
-- **Session security** — `HttpOnly` cookie, `SameSite=Lax`
+- **Session security** — `HttpOnly`, `Secure`, `SameSite=Lax` cookie; the app refuses to start without a `SECRET_KEY`
+- **No trace** — no access logs, no third-party fonts or CDNs, `no-referrer`, and pages are sent with `Cache-Control: no-store`
 
 ## Features
 
