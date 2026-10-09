@@ -1,13 +1,16 @@
 import secrets
 import string
-from collections import deque
 from datetime import datetime, timezone
 
 _CODE_CHARS = string.ascii_uppercase + string.digits
 _CODE_LEN = 8
-_MSG_BUFFER = 50
 
-# { code: { created_at, creator, members: {sid: name}, messages: deque } }
+# { code: { created_at, creator, key_check, locked, members: {sid: name} } }
+#
+# Messages are never stored, not even encrypted: the server only relays them.
+# key_check is a one-way hash of the room key (made in the browser), so the
+# server can tell whether someone has the real invite link without ever
+# learning the key that decrypts the messages.
 _store: dict[str, dict] = {}
 
 
@@ -22,15 +25,14 @@ def _gen_code() -> str:
             return code
 
 
-# ── Room lifecycle ────────────────────────────────────────────────────────────
-
-def create(creator: str) -> str:
+def create(creator: str, key_check: str) -> str:
     code = _gen_code()
     _store[code] = {
         "created_at": _now(),
         "creator": creator,
+        "key_check": key_check,
+        "locked": False,
         "members": {},
-        "messages": deque(maxlen=_MSG_BUFFER),
     }
     return code
 
@@ -43,14 +45,23 @@ def destroy(code: str) -> None:
     _store.pop(code, None)
 
 
-# ── Members ───────────────────────────────────────────────────────────────────
+def key_matches(code: str, key_check: str) -> bool:
+    return secrets.compare_digest(_store[code]["key_check"], key_check)
+
+
+def set_locked(code: str, locked: bool) -> None:
+    _store[code]["locked"] = locked
+
+
+def is_locked(code: str) -> bool:
+    return _store[code]["locked"]
+
 
 def join(code: str, sid: str, name: str) -> None:
     _store[code]["members"][sid] = name
 
 
 def leave(code: str, sid: str) -> str | None:
-    """Remove member by SID. Returns their display name, or None."""
     return _store[code]["members"].pop(sid, None)
 
 
@@ -65,16 +76,6 @@ def member_count(code: str) -> int:
 def name_taken(code: str, name: str) -> bool:
     taken = {n.lower() for n in _store[code]["members"].values()}
     return name.lower() in taken
-
-
-# ── Messages ──────────────────────────────────────────────────────────────────
-
-def push(code: str, msg: dict) -> None:
-    _store[code]["messages"].append(msg)
-
-
-def history(code: str) -> list[dict]:
-    return list(_store[code]["messages"])
 
 
 def make_msg(name: str, content: str) -> dict:

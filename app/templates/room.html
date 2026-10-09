@@ -11,7 +11,7 @@
   <header class="room-header">
     <div class="live-dot" id="live-dot"></div>
 
-    <div class="room-code-wrap" id="code-wrap" title="Copy room code">
+    <div class="room-code-wrap" id="code-wrap" title="Copy invite link">
       <span class="room-code-prefix">cipher://</span>
       <span class="room-code-value">{{ code }}</span>
       <span class="room-code-copy" id="copy-icon">
@@ -21,6 +21,8 @@
         </svg>
       </span>
     </div>
+
+    <span class="room-locked-tag" id="locked-tag" hidden>locked</span>
 
     <div class="room-header-spacer"></div>
 
@@ -34,6 +36,21 @@
   <div class="members-popover" id="members-popover" hidden>
     <div class="popover-label">In this room</div>
     <div id="popover-list"></div>
+
+    <div class="popover-section">
+      <div class="popover-label">Safety code</div>
+      <div class="safety-code" id="safety-code">···· ···· ····</div>
+      <p class="popover-hint">Everyone with the same invite link sees this code. Compare it to be sure.</p>
+    </div>
+
+    {% if creator %}
+    <div class="popover-section popover-actions">
+      <button class="popover-action" id="lock-btn" type="button">Lock room</button>
+      <button class="popover-action popover-danger" id="burn-btn" type="button">Burn channel</button>
+    </div>
+    {% endif %}
+
+    <p class="popover-hint popover-footnote">Press Esc twice to leave instantly.</p>
   </div>
 
   <!-- Messages -->
@@ -77,5 +94,6 @@
 
 {% block scripts %}
 <script src="{{ asset('js/vendor/socket.io-4.7.5.min.js') }}"></script>
+<script src="{{ asset('js/crypto.js') }}"></script>
 <script src="{{ asset('js/room.js') }}"></script>
 {% endblock %}
