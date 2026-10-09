@@ -20,4 +20,5 @@ def view(code: str):
         session.clear()
         return render_template("home.html", error="That room no longer exists.", prefill_code=code)
 
-    return render_template("room.html", code=code, name=session_name)
+    return render_template("room.html", code=code, name=session_name,
+                           creator=bool(session.get("creator")))

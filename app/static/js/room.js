@@ -1,8 +1,30 @@
 'use strict';
 
 // Name and code come from data attributes (inline scripts are blocked by the CSP)
-const MY_NAME   = document.getElementById('room-shell').dataset.name;
-const ROOM_CODE = document.getElementById('room-shell').dataset.code;
+const shellEl    = document.getElementById('room-shell');
+const MY_NAME    = shellEl.dataset.name;
+const ROOM_CODE  = shellEl.dataset.code;
+
+// The room key arrives after the '#' of the invite link, which never reaches the
+// server. Keep it in this tab only (so a refresh still works) and take it out of
+// the address bar.
+const KEY_STORE = 'cipher:' + ROOM_CODE;
+function loadKey() {
+  const fromHash = location.hash.slice(1);
+  let key = CipherCrypto.KEY_RE.test(fromHash) ? fromHash : null;
+  try {
+    if (key) sessionStorage.setItem(KEY_STORE, key);
+    else key = sessionStorage.getItem(KEY_STORE);
+  } catch { /* storage blocked: the key just won't survive a refresh */ }
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  return key;
+}
+function forgetKey() {
+  try { sessionStorage.removeItem(KEY_STORE); } catch {}
+}
+const KEY_STR = loadKey();
+const INVITE_LINK = `${location.origin}/cipher/r/${ROOM_CODE}#${KEY_STR}`;
+let cryptoKey = null;
 
 // iOS Safari keyboard fix — keyboard doesn't resize viewport, so we use
 // visualViewport to keep the shell exactly as tall as the visible area.
@@ -31,6 +53,10 @@ const copyIcon      = document.getElementById('copy-icon');
 const typingDots    = document.getElementById('typing-dots');
 const typingText    = document.getElementById('typing-text');
 const charCounter   = document.getElementById('char-counter');
+const safetyCodeEl  = document.getElementById('safety-code');
+const lockedTag     = document.getElementById('locked-tag');
+const lockBtn       = document.getElementById('lock-btn');   // creator only
+const burnBtn       = document.getElementById('burn-btn');   // creator only
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let lastSender  = null;
@@ -106,8 +132,13 @@ function appendMessage(msg) {
   const row    = document.createElement('div');
   row.className = 'msg-row';
   const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-  bubble.textContent = msg.content;  // textContent — XSS-safe
+  if (msg.content === null) {
+    bubble.className = 'msg-bubble msg-bubble-unreadable';
+    bubble.textContent = "Couldn't decrypt this message.";
+  } else {
+    bubble.className = 'msg-bubble';
+    bubble.textContent = msg.content;  // textContent — XSS-safe
+  }
   row.appendChild(bubble);
   lastGroupEl.appendChild(row);
 
@@ -158,7 +189,7 @@ const ICON_COPY = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><
 const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-7" stroke="#3EE08A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 codeWrap.addEventListener('click', () => {
-  navigator.clipboard.writeText(ROOM_CODE).then(() => {
+  navigator.clipboard.writeText(INVITE_LINK).then(() => {
     copyIcon.innerHTML = ICON_CHECK;
     copyIcon.classList.add('copied');
     clearTimeout(copyTimeout);
@@ -170,77 +201,186 @@ codeWrap.addEventListener('click', () => {
 });
 
 // ── Room closed ───────────────────────────────────────────────────────────────
-function showRoomClosed() {
-  const shell = document.getElementById('room-shell');
-  shell.style.position = 'relative';
+function showOverlay(title, sub, redirect = true) {
+  shellEl.style.position = 'relative';
   const overlay = document.createElement('div');
   overlay.className = 'room-closed-overlay';
-  overlay.innerHTML =
-    '<p class="room-closed-text">CHANNEL TERMINATED.</p>' +
-    '<p class="room-closed-sub">This room no longer exists.</p>' +
-    '<a class="room-closed-link" href="/cipher/">Return home</a>';
-  shell.appendChild(overlay);
-  setTimeout(() => { window.location.href = '/cipher/'; }, 4000);
+  const t = document.createElement('p');
+  t.className = 'room-closed-text';
+  t.textContent = title;
+  const s = document.createElement('p');
+  s.className = 'room-closed-sub';
+  s.textContent = sub;
+  const a = document.createElement('a');
+  a.className = 'room-closed-link';
+  a.href = '/cipher/';
+  a.textContent = 'Return home';
+  overlay.append(t, s, a);
+  shellEl.appendChild(overlay);
+  // replace(): the back button shouldn't lead back into a dead room
+  if (redirect) setTimeout(() => { location.replace('/cipher/'); }, 4000);
+}
+
+function showRoomClosed(data) {
+  forgetKey();
+  if (socket) socket.disconnect();
+  if (data && data.burned) showOverlay('CHANNEL BURNED.', 'The creator ended it. Nothing was kept.');
+  else                     showOverlay('CHANNEL TERMINATED.', 'This room no longer exists.');
+}
+
+// ── Encryption ────────────────────────────────────────────────────────────────
+// Decrypting is async, so everything that renders goes through one queue to
+// keep messages in the order they arrived. Sends are queued the same way.
+let renderQueue = Promise.resolve();
+let sendQueue   = Promise.resolve();
+function enqueue(fn) { renderQueue = renderQueue.then(fn).catch(() => {}); }
+
+async function openMessage(msg) {
+  try {
+    const body = await CipherCrypto.decrypt(cryptoKey, ROOM_CODE, msg.content);
+    if (typeof body.t !== 'string') throw new Error('bad message');
+    // The sender's name is sealed inside the message, so the server can't pin it on someone else
+    if (body.n !== msg.name) {
+      appendSystem({ text: `Hid a message whose sender didn't match (${msg.name}).`, ts: msg.ts });
+      return null;
+    }
+    return { ...msg, content: body.t };
+  } catch {
+    return { ...msg, content: null };
+  }
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
-const socket = io({ transports: ['websocket', 'polling'], path: '/cipher/socket.io' });
+let socket = null;
 
-socket.on('connect', () => {
-  liveDot.className = 'live-dot';
-});
+function connect() {
+  socket = io({ transports: ['websocket', 'polling'], path: '/cipher/socket.io' });
 
-socket.on('connect_error', () => {
-  liveDot.className = 'live-dot reconnecting';
-});
+  socket.on('connect', () => {
+    liveDot.className = 'live-dot';
+  });
 
-socket.on('disconnect', () => {
-  liveDot.className = 'live-dot disconnected';
-  appendSystem({ text: 'Connection lost. Attempting to reconnect…', ts: new Date().toISOString() });
-});
+  socket.on('connect_error', () => {
+    liveDot.className = 'live-dot reconnecting';
+  });
 
-socket.on('reconnect', () => {
-  liveDot.className = 'live-dot';
-  appendSystem({ text: 'Reconnected.', ts: new Date().toISOString() });
-});
+  socket.on('disconnect', reason => {
+    liveDot.className = 'live-dot disconnected';
+    if (reason === 'io client disconnect') return;  // we left on purpose
+    appendSystem({ text: 'Connection lost. Attempting to reconnect…', ts: new Date().toISOString() });
+  });
 
-socket.on('room_state', data => {
-  syncMembers(data.members || []);
-  (data.history || []).forEach(appendMessage);
-  scrollBottom(true);
-});
+  socket.on('reconnect', () => {
+    liveDot.className = 'live-dot';
+    appendSystem({ text: 'Reconnected.', ts: new Date().toISOString() });
+  });
 
-socket.on('new_message', msg => {
-  appendMessage(msg);
-  typingUsers.delete(msg.name);
-  syncTypingUI();
-});
+  socket.on('room_state', data => {
+    syncMembers(data.members || []);
+    syncLock(Boolean(data.locked));
+    scrollBottom(true);
+  });
 
-socket.on('system_message', msg => appendMessage(msg));
+  socket.on('new_message', msg => {
+    enqueue(async () => {
+      const opened = await openMessage(msg);
+      if (opened) appendMessage(opened);
+      typingUsers.delete(msg.name);
+      syncTypingUI();
+    });
+  });
 
-socket.on('member_update', data => syncMembers(data.members || []));
+  socket.on('system_message', msg => enqueue(() => appendMessage(msg)));
 
-socket.on('user_typing', data => {
-  typingUsers.add(data.name);
-  syncTypingUI();
-});
+  socket.on('member_update', data => syncMembers(data.members || []));
 
-socket.on('user_stop_typing', data => {
-  typingUsers.delete(data.name);
-  syncTypingUI();
-});
+  socket.on('lock_state', data => syncLock(Boolean(data.locked)));
 
-socket.on('room_closed', showRoomClosed);
+  socket.on('user_typing', data => {
+    typingUsers.add(data.name);
+    syncTypingUI();
+  });
 
-socket.on('error', data => {
-  appendSystem({ text: data.message, ts: new Date().toISOString() });
+  socket.on('user_stop_typing', data => {
+    typingUsers.delete(data.name);
+    syncTypingUI();
+  });
+
+  socket.on('room_closed', showRoomClosed);
+
+  socket.on('error', data => {
+    appendSystem({ text: data.message, ts: new Date().toISOString() });
+  });
+}
+
+async function start() {
+  if (!KEY_STR) {
+    showOverlay('KEY MISSING.', 'This channel is end-to-end encrypted. Open the full invite link to read it.', false);
+    return;
+  }
+  if (!CipherCrypto.available()) {
+    showOverlay('CAN’T DECRYPT.', 'This browser can’t decrypt messages here. Open Cipher over https.', false);
+    return;
+  }
+  cryptoKey = await CipherCrypto.importKey(KEY_STR);
+  CipherCrypto.safetyCode(KEY_STR).then(c => { safetyCodeEl.textContent = c; });
+  appendSystem({ text: 'Messages are end-to-end encrypted. Only people with the invite link can read them.', ts: new Date().toISOString() });
+  connect();
+}
+
+start();
+
+// ── Lock + burn (creator only) ────────────────────────────────────────────────
+function syncLock(locked) {
+  lockedTag.hidden = !locked;
+  if (lockBtn) {
+    lockBtn.dataset.locked = locked ? '1' : '';
+    lockBtn.textContent = locked ? 'Unlock room' : 'Lock room';
+  }
+}
+
+if (lockBtn) {
+  lockBtn.addEventListener('click', () => {
+    if (socket) socket.emit('lock', { locked: !lockBtn.dataset.locked });
+  });
+}
+
+if (burnBtn) {
+  let disarmTimer = null;
+  burnBtn.addEventListener('click', () => {
+    if (burnBtn.dataset.armed) {
+      if (socket) socket.emit('burn');
+      return;
+    }
+    // Two clicks to burn, so it can't happen by accident
+    burnBtn.dataset.armed = '1';
+    burnBtn.textContent = 'Click again to burn';
+    clearTimeout(disarmTimer);
+    disarmTimer = setTimeout(() => {
+      delete burnBtn.dataset.armed;
+      burnBtn.textContent = 'Burn channel';
+    }, 3000);
+  });
+}
+
+// ── Panic: Esc twice wipes the screen and leaves ──────────────────────────────
+let lastEsc = 0;
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const now = Date.now();
+  if (now - lastEsc < 600) {
+    messagesEl.replaceChildren();
+    forgetKey();
+    if (socket) socket.disconnect();
+    location.replace('/cipher/');
+  }
+  lastEsc = now;
 });
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 function sendMessage() {
-  const content = msgInput.value.trim();
-  if (!content || content.length > 1000) return;
-  socket.emit('send_message', { content });
+  const text = msgInput.value.trim();
+  if (!text || text.length > 1000 || !socket || !cryptoKey) return;
   msgInput.value = '';
   msgInput.style.height = 'auto';
   charCounter.className = 'char-counter';
@@ -249,6 +389,12 @@ function sendMessage() {
     clearTimeout(typingTimer);
     socket.emit('stop_typing');
   }
+  sendQueue = sendQueue.then(async () => {
+    const content = await CipherCrypto.encrypt(cryptoKey, ROOM_CODE, { n: MY_NAME, t: text });
+    socket.emit('send_message', { content });
+  }).catch(() => {
+    appendSystem({ text: "Couldn't encrypt that message, so it wasn't sent.", ts: new Date().toISOString() });
+  });
 }
 
 sendBtn.addEventListener('click', sendMessage);
@@ -269,6 +415,7 @@ msgInput.addEventListener('input', () => {
   else                 {                                   charCounter.className = 'char-counter';       }
 
   // Typing events
+  if (!socket) return;
   if (!isTyping) { isTyping = true; socket.emit('typing'); }
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => {
@@ -278,5 +425,5 @@ msgInput.addEventListener('input', () => {
 });
 
 window.addEventListener('beforeunload', () => {
-  if (isTyping) socket.emit('stop_typing');
+  if (isTyping && socket) socket.emit('stop_typing');
 });

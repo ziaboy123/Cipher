@@ -8,6 +8,9 @@ home_bp = Blueprint("home", __name__)
 
 _NAME_RE = re.compile(r"^[\w '\-]+$")
 
+# The browser sends a one-way hash of the room key (SHA-256, base64url), never the key
+_KEY_CHECK_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+
 
 def _validate_name(raw: str) -> tuple[str, str | None]:
     name = raw.strip()
@@ -35,13 +38,12 @@ def create():
     if err:
         return render_template("home.html", error=err, prefill_name=name)
 
-    code = rooms.create(name)
-    csrf = session.get('_csrf')
-    session.clear()
-    if csrf:
-        session['_csrf'] = csrf
-    session["room"] = code
-    session["name"] = name
+    key_check = request.form.get("key_check", "")
+    if not _KEY_CHECK_RE.match(key_check):
+        return render_template("home.html", error="Cipher needs JavaScript turned on to encrypt your messages.", prefill_name=name)
+
+    code = rooms.create(name, key_check)
+    _start_session(code, name, creator=True)
     return redirect(url_for("room.view", code=code))
 
 
@@ -58,16 +60,31 @@ def join():
     if not code or len(code) != 8 or not code.isalnum():
         return render_template("home.html", error="Room codes are 8 characters.", prefill_name=name, prefill_code=code)
 
+    key_check = request.form.get("key_check", "")
+    if not _KEY_CHECK_RE.match(key_check):
+        return render_template("home.html", error="Paste the full invite link. The room code on its own can't unlock the channel.", prefill_name=name, prefill_code=code)
+
     if not rooms.exists(code):
         return render_template("home.html", error="That room doesn't exist.", prefill_name=name, prefill_code=code)
+
+    if not rooms.key_matches(code, key_check):
+        return render_template("home.html", error="That invite link doesn't match this room.", prefill_name=name, prefill_code=code)
+
+    if rooms.is_locked(code):
+        return render_template("home.html", error="This channel is locked. No one new can join.", prefill_name=name, prefill_code=code)
 
     if rooms.name_taken(code, name):
         return render_template("home.html", error="That name is taken in this room. Choose another.", prefill_name=name, prefill_code=code)
 
+    _start_session(code, name, creator=False)
+    return redirect(url_for("room.view", code=code))
+
+
+def _start_session(code: str, name: str, creator: bool) -> None:
     csrf = session.get('_csrf')
     session.clear()
     if csrf:
         session['_csrf'] = csrf
     session["room"] = code
     session["name"] = name
-    return redirect(url_for("room.view", code=code))
+    session["creator"] = creator

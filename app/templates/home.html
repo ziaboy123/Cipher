@@ -19,6 +19,7 @@
     <div>
       <form class="home-form" method="POST" action="{{ url_for('home.create') }}" id="form-create" novalidate>
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="key_check">
 
         <div>
           <label class="field-label" for="name">Your name</label>
@@ -48,6 +49,7 @@
       <form class="home-form" method="POST" action="{{ url_for('home.join') }}" id="form-join" novalidate>
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="name" id="join-name-mirror">
+        <input type="hidden" name="key_check">
 
         <div class="join-row">
           <input
@@ -56,9 +58,8 @@
             name="code"
             id="code"
             value="{{ prefill_code or '' }}"
-            placeholder="room code"
+            placeholder="paste invite link"
             autocomplete="off"
-            maxlength="8"
             spellcheck="false"
           >
           <button type="submit" class="btn btn-ghost">Join</button>
@@ -75,5 +76,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ asset('js/crypto.js') }}"></script>
 <script src="{{ asset('js/home.js') }}"></script>
 {% endblock %}

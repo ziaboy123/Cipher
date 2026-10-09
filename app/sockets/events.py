@@ -1,12 +1,18 @@
+import re
 import time
 from collections import deque
 from flask import session, request
-from flask_socketio import join_room, leave_room, emit
+from flask_socketio import join_room, leave_room, emit, close_room
 from app.extensions import socketio
 import app.rooms as rooms
 
 # Per-connection flood limits: (max events, per seconds)
 _LIMITS = {"message": (10, 10.0), "typing": (30, 10.0)}
+
+# Messages arrive already encrypted in the browser: iv + AES-GCM ciphertext as
+# base64url. 8200 chars fits the worst case: a 1000-character message that is
+# all JSON-escaped characters (6 bytes each) plus the sealed sender name.
+_CIPHERTEXT_RE = re.compile(r"^[A-Za-z0-9_-]{40,8200}$")
 
 # { (kind, sid): deque of event times }
 _recent: dict[tuple[str, str], deque] = {}
@@ -44,15 +50,14 @@ def on_connect():
     rooms.join(code, request.sid, name)
     join_room(code)
 
-    # Send full room state only to the new joiner
+    # Room state only to the new joiner. No backlog: you only see what's said after you arrive.
     emit("room_state", {
         "members": rooms.member_names(code),
-        "history": rooms.history(code),
+        "locked": rooms.is_locked(code),
     })
 
     # System message + member update to everyone else
     msg = rooms.make_system(f"{name} joined.")
-    rooms.push(code, msg)
     emit("system_message", msg, to=code, skip_sid=request.sid)
     emit("member_update", {"members": rooms.member_names(code)}, to=code)
 
@@ -70,13 +75,15 @@ def on_disconnect():
 
     leave_room(code)
 
+    # Clear their typing indicator in case the tab crashed mid-sentence
+    emit("user_stop_typing", {"name": name}, to=code)
+
     if rooms.member_count(code) == 0:
         rooms.destroy(code)
         # Broadcast to any lingering sockets in the room
         emit("room_closed", {}, to=code)
     else:
         msg = rooms.make_system(f"{name} left.")
-        rooms.push(code, msg)
         emit("system_message", msg, to=code)
         emit("member_update", {"members": rooms.member_names(code)}, to=code)
 
@@ -89,17 +96,15 @@ def on_message(data):
     if not code or not name or not rooms.exists(code) or not isinstance(data, dict):
         return
 
-    content = str(data.get("content", "")).strip()
-    if not content or len(content) > 1000:
+    content = data.get("content")
+    if not isinstance(content, str) or not _CIPHERTEXT_RE.match(content):
         return
 
     if not _allowed("message"):
         emit("error", {"message": "You're sending messages too fast. Wait a few seconds."})
         return
 
-    msg = rooms.make_msg(name, content)
-    rooms.push(code, msg)
-    emit("new_message", msg, to=code)
+    emit("new_message", rooms.make_msg(name, content), to=code)
 
 
 @socketio.on("typing")
@@ -118,3 +123,25 @@ def on_stop_typing():
     if not code or not name or not _allowed("typing"):
         return
     emit("user_stop_typing", {"name": name}, to=code, skip_sid=request.sid)
+
+
+@socketio.on("lock")
+def on_lock(data):
+    code = session.get("room")
+    if not session.get("creator") or not code or not rooms.exists(code) or not isinstance(data, dict):
+        return
+    locked = bool(data.get("locked"))
+    rooms.set_locked(code, locked)
+    text = "Channel locked. No one new can join." if locked else "Channel unlocked."
+    emit("system_message", rooms.make_system(text), to=code)
+    emit("lock_state", {"locked": locked}, to=code)
+
+
+@socketio.on("burn")
+def on_burn():
+    code = session.get("room")
+    if not session.get("creator") or not code or not rooms.exists(code):
+        return
+    rooms.destroy(code)
+    emit("room_closed", {"burned": True}, to=code)
+    close_room(code)
