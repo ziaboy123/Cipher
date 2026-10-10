@@ -6,21 +6,27 @@ import app.rooms as rooms
 
 home_bp = Blueprint("home", __name__)
 
-_NAME_RE = re.compile(r"^[\w '\-]+$")
+# Everything below is made in the browser from the room key, which the server
+# never sees. Names are checked (2–30 characters, letters/numbers/spaces/
+# hyphens/apostrophes) in the browser, because the server can't read them.
 
-# The browser sends a one-way hash of the room key (SHA-256, base64url), never the key
+# One-way hash of the room key (SHA-256, base64url)
 _KEY_CHECK_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+# The display name sealed with the room key: iv + AES-GCM ciphertext, base64url
+_SEALED_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{40,200}$")
+# Keyed hash of the lowercased name, for spotting duplicates (HMAC-SHA256, base64url)
+_NAME_TAG_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+
+_NEEDS_JS = "Cipher needs JavaScript turned on to encrypt your messages."
 
 
-def _validate_name(raw: str) -> tuple[str, str | None]:
-    name = raw.strip()
-    if not name:
-        return name, "Enter a name to continue."
-    if len(name) < 2 or len(name) > 30:
-        return name, "Name must be between 2 and 30 characters."
-    if not _NAME_RE.match(name):
-        return name, "Letters, numbers, spaces, hyphens, and apostrophes only."
-    return name, None
+def _sealed_fields() -> tuple[str, str, str] | None:
+    key_check = request.form.get("key_check", "")
+    name = request.form.get("name_sealed", "")
+    tag = request.form.get("name_tag", "")
+    if _KEY_CHECK_RE.match(key_check) and _SEALED_NAME_RE.match(name) and _NAME_TAG_RE.match(tag):
+        return key_check, name, tag
+    return None
 
 
 @home_bp.route("/")
@@ -34,16 +40,13 @@ def index():
 @protect
 @limiter.limit("5 per hour")
 def create():
-    name, err = _validate_name(request.form.get("name", ""))
-    if err:
-        return render_template("home.html", error=err, prefill_name=name)
+    fields = _sealed_fields()
+    if not fields:
+        return render_template("home.html", error=_NEEDS_JS)
+    key_check, name, tag = fields
 
-    key_check = request.form.get("key_check", "")
-    if not _KEY_CHECK_RE.match(key_check):
-        return render_template("home.html", error="Cipher needs JavaScript turned on to encrypt your messages.", prefill_name=name)
-
-    code = rooms.create(name, key_check)
-    _start_session(code, name, creator=True)
+    code = rooms.create(key_check)
+    _start_session(code, name, tag, creator=True)
     return redirect(url_for("room.view", code=code))
 
 
@@ -51,40 +54,38 @@ def create():
 @protect
 @limiter.limit("20 per minute")
 def join():
-    name, err = _validate_name(request.form.get("name", ""))
     code = request.form.get("code", "").strip().upper()
 
-    if err:
-        return render_template("home.html", error=err, prefill_name=name, prefill_code=code)
-
     if not code or len(code) != 8 or not code.isalnum():
-        return render_template("home.html", error="Room codes are 8 characters.", prefill_name=name, prefill_code=code)
+        return render_template("home.html", error="Room codes are 8 characters.", prefill_code=code)
 
-    key_check = request.form.get("key_check", "")
-    if not _KEY_CHECK_RE.match(key_check):
-        return render_template("home.html", error="Paste the full invite link. The room code on its own can't unlock the channel.", prefill_name=name, prefill_code=code)
+    fields = _sealed_fields()
+    if not fields:
+        return render_template("home.html", error="Paste the full invite link. The room code on its own can't unlock the channel.", prefill_code=code)
+    key_check, name, tag = fields
 
     if not rooms.exists(code):
-        return render_template("home.html", error="That room doesn't exist.", prefill_name=name, prefill_code=code)
+        return render_template("home.html", error="That room doesn't exist.", prefill_code=code)
 
     if not rooms.key_matches(code, key_check):
-        return render_template("home.html", error="That invite link doesn't match this room.", prefill_name=name, prefill_code=code)
+        return render_template("home.html", error="That invite link doesn't match this room.", prefill_code=code)
 
     if rooms.is_locked(code):
-        return render_template("home.html", error="This channel is locked. No one new can join.", prefill_name=name, prefill_code=code)
+        return render_template("home.html", error="This channel is locked. No one new can join.", prefill_code=code)
 
-    if rooms.name_taken(code, name):
-        return render_template("home.html", error="That name is taken in this room. Choose another.", prefill_name=name, prefill_code=code)
+    if rooms.name_taken(code, tag):
+        return render_template("home.html", error="That name is taken in this room. Choose another.", prefill_code=code)
 
-    _start_session(code, name, creator=False)
+    _start_session(code, name, tag, creator=False)
     return redirect(url_for("room.view", code=code))
 
 
-def _start_session(code: str, name: str, creator: bool) -> None:
+def _start_session(code: str, name: str, tag: str, creator: bool) -> None:
     csrf = session.get('_csrf')
     session.clear()
     if csrf:
         session['_csrf'] = csrf
     session["room"] = code
-    session["name"] = name
+    session["name"] = name      # sealed: the server can't read it
+    session["name_tag"] = tag
     session["creator"] = creator

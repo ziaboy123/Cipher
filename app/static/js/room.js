@@ -2,7 +2,9 @@
 
 // Name and code come from data attributes (inline scripts are blocked by the CSP)
 const shellEl    = document.getElementById('room-shell');
-const MY_NAME    = shellEl.dataset.name;
+// Your display name arrives sealed with the room key; it's opened once the key loads
+const MY_SEALED  = shellEl.dataset.name;
+let   MY_NAME    = null;
 const ROOM_CODE  = shellEl.dataset.code;
 
 // The room key arrives after the '#' of the invite link, which never reaches the
@@ -96,9 +98,8 @@ function appendSystem(msg) {
 }
 
 function appendMessage(msg) {
-  if (msg.type === 'system') { appendSystem(msg); return; }
 
-  const isOwn  = msg.name === MY_NAME;
+  const isOwn  = msg.name === MY_SEALED;
   const msgTs  = new Date(msg.ts).getTime();
   const inGroup = msg.name === lastSender && (msgTs - lastTs) < GROUP_TIMEOUT_MS && lastGroupEl;
 
@@ -112,7 +113,7 @@ function appendMessage(msg) {
     if (!isOwn) {
       const sender = document.createElement('span');
       sender.className = 'msg-sender';
-      sender.textContent = msg.name;
+      sender.textContent = msg.sender;
       header.appendChild(sender);
     }
 
@@ -146,8 +147,11 @@ function appendMessage(msg) {
 }
 
 // ── Typing indicator ──────────────────────────────────────────────────────────
-function syncTypingUI() {
-  const names = Array.from(typingUsers);
+let typingRender = 0;
+async function syncTypingUI() {
+  const render = ++typingRender;
+  const names = await Promise.all(Array.from(typingUsers, nameOf));
+  if (render !== typingRender) return;  // a newer update already drew
   if (!names.length) {
     typingDots.classList.remove('visible');
     typingText.textContent = '';
@@ -160,14 +164,19 @@ function syncTypingUI() {
 }
 
 // ── Members ───────────────────────────────────────────────────────────────────
-function syncMembers(names) {
-  memberCountEl.textContent = names.length;
+let membersRender = 0;
+async function syncMembers(sealedNames) {
+  const render = ++membersRender;
+  memberCountEl.textContent = sealedNames.length;
+  const members = await Promise.all(sealedNames.map(async s => ({ sealed: s, name: await nameOf(s) })));
+  if (render !== membersRender) return;
+  members.sort((a, b) => a.name.localeCompare(b.name));
   popoverList.innerHTML = '';
-  names.forEach(n => {
+  members.forEach(({ sealed, name }) => {
     const el = document.createElement('div');
     el.className = 'popover-member';
-    el.textContent = n;
-    if (n === MY_NAME) {
+    el.textContent = name;
+    if (sealed === MY_SEALED) {
       const tag = document.createElement('span');
       tag.className = 'you-tag';
       tag.textContent = '(you)';
@@ -235,18 +244,41 @@ let renderQueue = Promise.resolve();
 let sendQueue   = Promise.resolve();
 function enqueue(fn) { renderQueue = renderQueue.then(fn).catch(() => {}); }
 
+// Sealed name -> readable name, opened once and remembered
+const openedNames = new Map();
+function nameOf(sealed) {
+  if (!openedNames.has(sealed)) {
+    openedNames.set(sealed, CipherCrypto.openName(cryptoKey, sealed)
+      .then(n => (CipherCrypto.nameError(n) ? 'Unknown' : n))
+      .catch(() => 'Unknown'));
+  }
+  return openedNames.get(sealed);
+}
+
+// The server only says what happened; the browser fills in who
+async function describeEvent(msg) {
+  switch (msg.event) {
+    case 'joined':   return `${await nameOf(msg.name)} joined.`;
+    case 'left':     return `${await nameOf(msg.name)} left.`;
+    case 'locked':   return 'Channel locked. No one new can join.';
+    case 'unlocked': return 'Channel unlocked.';
+    default:         return msg.text || '';
+  }
+}
+
 async function openMessage(msg) {
   try {
     const body = await CipherCrypto.decrypt(cryptoKey, ROOM_CODE, msg.content);
     if (typeof body.t !== 'string') throw new Error('bad message');
-    // The sender's name is sealed inside the message, so the server can't pin it on someone else
-    if (body.n !== msg.name) {
-      appendSystem({ text: `Hid a message whose sender didn't match (${msg.name}).`, ts: msg.ts });
+    const sender = await nameOf(msg.name);
+    // The sender's name is sealed inside the message too, so the server can't pin it on someone else
+    if (body.n !== sender) {
+      appendSystem({ text: `Hid a message whose sender didn't match (${sender}).`, ts: msg.ts });
       return null;
     }
-    return { ...msg, content: body.t };
+    return { ...msg, sender, content: body.t };
   } catch {
-    return { ...msg, content: null };
+    return { ...msg, sender: await nameOf(msg.name), content: null };
   }
 }
 
@@ -290,7 +322,9 @@ function connect() {
     });
   });
 
-  socket.on('system_message', msg => enqueue(() => appendMessage(msg)));
+  socket.on('system_message', msg => enqueue(async () => {
+    appendSystem({ text: await describeEvent(msg), ts: msg.ts });
+  }));
 
   socket.on('member_update', data => syncMembers(data.members || []));
 
@@ -323,6 +357,7 @@ async function start() {
     return;
   }
   cryptoKey = await CipherCrypto.importKey(KEY_STR);
+  MY_NAME = await nameOf(MY_SEALED);
   CipherCrypto.safetyCode(KEY_STR).then(c => { safetyCodeEl.textContent = c; });
   appendSystem({ text: 'Messages are end-to-end encrypted. Only people with the invite link can read them.', ts: new Date().toISOString() });
   connect();
@@ -371,6 +406,7 @@ document.addEventListener('keydown', e => {
   if (now - lastEsc < 600) {
     messagesEl.replaceChildren();
     forgetKey();
+    try { sessionStorage.removeItem('cipher:name'); } catch {}
     if (socket) socket.disconnect();
     location.replace('/cipher/');
   }

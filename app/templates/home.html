@@ -20,6 +20,8 @@
       <form class="home-form" method="POST" action="{{ url_for('home.create') }}" id="form-create" novalidate>
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="key_check">
+        <input type="hidden" name="name_sealed">
+        <input type="hidden" name="name_tag">
 
         <div>
           <label class="field-label" for="name">Your name</label>
@@ -27,8 +29,6 @@
             class="input"
             type="text"
             id="name"
-            name="name"
-            value="{{ prefill_name or '' }}"
             placeholder="e.g. Alex"
             autocomplete="off"
             autocapitalize="words"
@@ -48,8 +48,9 @@
 
       <form class="home-form" method="POST" action="{{ url_for('home.join') }}" id="form-join" novalidate>
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="name" id="join-name-mirror">
         <input type="hidden" name="key_check">
+        <input type="hidden" name="name_sealed">
+        <input type="hidden" name="name_tag">
 
         <div class="join-row">
           <input

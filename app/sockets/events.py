@@ -47,7 +47,8 @@ def on_connect():
         emit("error", {"message": "This room no longer exists."})
         return False
 
-    rooms.join(code, request.sid, name)
+    # name is the sealed (encrypted) display name; only the browsers can read it
+    rooms.join(code, request.sid, name, session.get("name_tag", ""))
     join_room(code)
 
     # Room state only to the new joiner. No backlog: you only see what's said after you arrive.
@@ -57,7 +58,7 @@ def on_connect():
     })
 
     # System message + member update to everyone else
-    msg = rooms.make_system(f"{name} joined.")
+    msg = rooms.make_event("joined", name)
     emit("system_message", msg, to=code, skip_sid=request.sid)
     emit("member_update", {"members": rooms.member_names(code)}, to=code)
 
@@ -83,7 +84,7 @@ def on_disconnect():
         # Broadcast to any lingering sockets in the room
         emit("room_closed", {}, to=code)
     else:
-        msg = rooms.make_system(f"{name} left.")
+        msg = rooms.make_event("left", name)
         emit("system_message", msg, to=code)
         emit("member_update", {"members": rooms.member_names(code)}, to=code)
 
@@ -132,8 +133,7 @@ def on_lock(data):
         return
     locked = bool(data.get("locked"))
     rooms.set_locked(code, locked)
-    text = "Channel locked. No one new can join." if locked else "Channel unlocked."
-    emit("system_message", rooms.make_system(text), to=code)
+    emit("system_message", rooms.make_event("locked" if locked else "unlocked"), to=code)
     emit("lock_state", {"locked": locked}, to=code)
 
 
