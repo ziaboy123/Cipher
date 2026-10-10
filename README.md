@@ -25,11 +25,12 @@ No user accounts. No persistent identities. No request logs, and nothing loaded 
 - **AES-256-GCM** via the browser's Web Crypto API, a fresh random IV per message
 - **Key in the link fragment.** Browsers don't send `#…` to servers, and a redirect keeps it, so the key travels with the invite link and nowhere else. It's removed from the address bar and kept in that tab's `sessionStorage` only so a refresh works
 - **The code alone isn't enough.** The server stores a one-way SHA-256 hash of the key and only lets in people whose browser presents the matching hash. It can check invite links but can't recover the key
-- **Sealed sender.** The sender's name is encrypted inside each message, so the server can't relabel a message as someone else's, and each message is bound to its room so it can't be replayed elsewhere
+- **Encrypted names.** Display names are sealed with the room key in the browser too. The server only ever handles scrambled labels, and the "joined"/"left" lines are written by each browser. A keyed hash of the name (HMAC, derived from the room key) lets the server refuse a duplicate name in a room without learning it
+- **Sealed sender.** The sender's name is also encrypted inside each message, so the server can't relabel a message as someone else's, and each message is bound to its room so it can't be replayed elsewhere
 - **Safety code.** Everyone with the same key sees the same short code in the members panel; compare it to be sure you share the same link
 - **Nothing stored.** The server relays ciphertext and keeps no messages at all, so late joiners only see what's said after they arrive
 
-What the server can still see: display names, who is in which room and when, message sizes and timing, and typing indicators. As with any web app, the server also delivers the JavaScript that does the encrypting; the strict CSP and self-hosted assets keep that code to files served by Cipher itself.
+What the server can still see: how many people are in a room and when they come and go (as anonymous labels), message sizes and timing, and when someone is typing. It never sees names or message text. As with any web app, the server also delivers the JavaScript that does the encrypting; the strict CSP and self-hosted assets keep that code to files served by Cipher itself.
 
 ## Quick Start
 
@@ -106,7 +107,7 @@ app/
 │   ├── base.html      # HTML shell
 │   ├── home.html      # CIPHER wordmark, create/join forms
 │   └── room.html      # Room header, message list, input
-├── rooms.py           # In-memory room store (members + key hash; no messages)
+├── rooms.py           # In-memory room store (sealed names + key hash; no messages)
 ├── csrf.py            # Lightweight CSRF without Flask-WTF
 ├── config.py          # Flask config (secret key, session cookie settings)
 ├── extensions.py      # SocketIO + Limiter instances
@@ -123,7 +124,7 @@ run.py                 # Entrypoint — eventlet.monkey_patch() + socketio.run()
 - **Content Security Policy** — scripts, styles, fonts and the socket may only come from Cipher itself; no inline scripts or styles
 - **Same-origin sockets** — Socket.IO rejects connections from other sites
 - **Socket auth gate** — unauthenticated socket connections rejected on `connect`
-- **Input validation** — name (2–30 chars, restricted pattern) server-side; messages must be well-formed ciphertext (≤1000 characters before encryption)
+- **Input validation** — names (2–30 chars, restricted pattern) are checked in the browser, since the server can't read them; the server only accepts well-formed ciphertext for names and messages (≤1000 characters before encryption)
 - **Session security** — `HttpOnly`, `Secure`, `SameSite=Lax` cookie; the app refuses to start without a `SECRET_KEY`
 - **No trace** — no access logs, no third-party fonts or CDNs, `no-referrer`, and pages are sent with `Cache-Control: no-store`
 
