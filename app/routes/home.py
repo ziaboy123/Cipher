@@ -32,6 +32,8 @@ def _sealed_fields() -> tuple[str, str, str] | None:
 @home_bp.route("/")
 def index():
     prefill_code = request.args.get("code", "").upper()
+    if not rooms.valid_code(prefill_code):
+        prefill_code = ""
     prefill_invited = bool(prefill_code)
     return render_template("home.html", prefill_code=prefill_code, prefill_invited=prefill_invited)
 
@@ -56,7 +58,7 @@ def create():
 def join():
     code = request.form.get("code", "").strip().upper()
 
-    if not code or len(code) != 8 or not code.isalnum():
+    if not rooms.valid_code(code):
         return render_template("home.html", error="Room codes are 8 characters.", prefill_code=code)
 
     fields = _sealed_fields()

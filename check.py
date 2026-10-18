@@ -82,6 +82,15 @@ assert "?v=" in html, "Asset URLs aren't versioned"
 assert 'name="name"' not in html, "A plaintext name field would be submitted to the server"
 print("Headers + page OK")
 
+# Only real room codes get through. A huge one used to land in the redirect's
+# Location header, which was too big for nginx and took all of Cipher down.
+assert client.get("/cipher/r/" + "A" * 4000).status_code == 404
+assert client.get("/cipher/r/abc").status_code == 404
+res = client.get("/cipher/r/abcd2345")
+assert res.status_code == 302 and res.headers["Location"].endswith("code=ABCD2345")
+assert "A" * 9 not in client.get("/cipher/?code=" + "A" * 4000).get_data(as_text=True)
+print("Room codes OK")
+
 
 def post(c, path, **form):
     with c.session_transaction() as sess:
