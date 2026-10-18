@@ -30,6 +30,10 @@ def _gen_code() -> str:
             return code
 
 
+def valid_code(code: str) -> bool:
+    return len(code) == _CODE_LEN and all(c in _CODE_CHARS for c in code)
+
+
 def create(key_check: str) -> str:
     code = _gen_code()
     _store[code] = {
