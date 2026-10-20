@@ -370,3 +370,9 @@
   font-style: italic;
   color: var(--c-muted);
 }
+
+/* Someone else here has a name that looks like this one */
+.msg-sender.lookalike,
+.popover-member.lookalike {
+  color: var(--c-amber);
+}

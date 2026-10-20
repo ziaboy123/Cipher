@@ -1,4 +1,5 @@
 import re
+import secrets
 from flask import Blueprint, render_template, request, session, redirect, url_for
 from app.extensions import limiter
 from app.csrf import protect
@@ -14,7 +15,7 @@ home_bp = Blueprint("home", __name__)
 _KEY_CHECK_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 # The display name sealed with the room key: iv + AES-GCM ciphertext, base64url
 _SEALED_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{40,200}$")
-# Keyed hash of the lowercased name, for spotting duplicates (HMAC-SHA256, base64url)
+# Keyed hash of the name's lookalike skeleton, for spotting duplicates (HMAC-SHA256, base64url)
 _NAME_TAG_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 _NEEDS_JS = "Cipher needs JavaScript turned on to encrypt your messages."
@@ -48,7 +49,9 @@ def create():
     key_check, name, tag = fields
 
     code = rooms.create(key_check)
-    _start_session(code, name, tag, creator=True)
+    sess = _new_sess()
+    rooms.claim_name(code, name, sess)
+    _start_session(code, name, tag, sess, creator=True)
     return redirect(url_for("room.view", code=code))
 
 
@@ -75,14 +78,21 @@ def join():
     if rooms.is_locked(code):
         return render_template("home.html", error="This channel is locked. No one new can join.", prefill_code=code)
 
-    if rooms.name_taken(code, tag):
+    # Same name (by its tag), or a copy of someone's sealed name off the member list
+    sess = _new_sess()
+    if rooms.name_taken(code, tag) or not rooms.claim_name(code, name, sess):
         return render_template("home.html", error="That name is taken in this room. Choose another.", prefill_code=code)
 
-    _start_session(code, name, tag, creator=False)
+    _start_session(code, name, tag, sess, creator=False)
     return redirect(url_for("room.view", code=code))
 
 
-def _start_session(code: str, name: str, tag: str, creator: bool) -> None:
+def _new_sess() -> str:
+    # Random id for this join, so the socket code can tell your tabs apart from other people
+    return secrets.token_urlsafe(12)
+
+
+def _start_session(code: str, name: str, tag: str, sess: str, creator: bool) -> None:
     csrf = session.get('_csrf')
     session.clear()
     if csrf:
@@ -91,3 +101,4 @@ def _start_session(code: str, name: str, tag: str, creator: bool) -> None:
     session["name"] = name      # sealed: the server can't read it
     session["name_tag"] = tag
     session["creator"] = creator
+    session["sess"] = sess

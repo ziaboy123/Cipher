@@ -65,6 +65,10 @@ def create_app() -> Flask:
     app.register_blueprint(room_bp, url_prefix='/cipher')
 
     with app.app_context():
-        from app.sockets import events as _  # noqa: F401
+        from app.sockets import events
+    # Cap sockets per visitor before Socket.IO even sees them, and the
+    # requests hanging off them (outermost, so it counts everything)
+    events.guard_engineio(socketio.server.eio)
+    app.wsgi_app = events.cap_requests(app.wsgi_app)
 
     return app
