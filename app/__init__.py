@@ -2,6 +2,7 @@ import hashlib
 from functools import cache
 from pathlib import Path
 from flask import Flask, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config
 from app.extensions import socketio, limiter
 from app import csrf as _csrf
@@ -35,6 +36,11 @@ def create_app() -> Flask:
     socketio.init_app(app, async_mode="eventlet", path="/cipher/socket.io",
                       max_http_buffer_size=16_384)
     limiter.init_app(app)
+
+    # Behind cloudflared -> nginx, Flask sees plain http. Trust the one proxy's
+    # X-Forwarded-Proto so redirects (e.g. /cipher -> /cipher/) stay on https.
+    # x_for=0: client IPs come from CF-Connecting-IP (see extensions.py), not X-Forwarded-For.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=1, x_host=0, x_port=0, x_prefix=0)
 
     # Inject csrf_token() into every template
     app.jinja_env.globals["csrf_token"] = _csrf.token
