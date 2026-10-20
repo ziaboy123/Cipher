@@ -32,7 +32,7 @@ function clearError() {
 // Seal the name with the room key, then submit with the key riding along after
 // the '#': the server's redirect keeps it, but the browser never sends it.
 async function submitWithKey(form, key) {
-  const name = nameInput.value.trim();
+  const name = CipherCrypto.cleanName(nameInput.value);
   const cryptoKey = await CipherCrypto.importKey(key);
   form.elements.key_check.value   = await CipherCrypto.keyCheck(key);
   form.elements.name_sealed.value = await CipherCrypto.sealName(cryptoKey, name);
@@ -47,7 +47,9 @@ function readyToSubmit() {
     showError("This browser can't encrypt messages here. Open Cipher over https.");
     return false;
   }
-  const err = CipherCrypto.nameError(nameInput.value.trim());
+  // Tidied first (fancy letters made plain, invisible characters dropped), so
+  // what gets checked is exactly what gets sealed and tagged
+  const err = CipherCrypto.nameError(CipherCrypto.cleanName(nameInput.value));
   if (err) {
     showError(err);
     return false;

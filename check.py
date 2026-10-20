@@ -4,6 +4,7 @@ os.environ.setdefault("CIPHER_DEV", "1")
 import base64
 import hashlib
 import secrets
+import time
 
 from app import create_app
 from app.extensions import socketio
@@ -53,19 +54,46 @@ assert rooms.key_matches(code, KEY_CHECK)
 assert not rooms.key_matches(code, key_check_for(secrets.token_bytes(32)))
 assert "messages" not in rooms._store[code], "Rooms must not store messages"
 
-rooms.join(code, "sid-1", ALICE, ALICE_TAG)
-rooms.join(code, "sid-2", BOB, BOB_TAG)
-assert rooms.member_count(code) == 2
+rooms.join(code, "sid-1", ALICE, ALICE_TAG, "sess-a")
+rooms.join(code, "sid-2", BOB, BOB_TAG, "sess-b")
+rooms.join(code, "sid-3", ALICE, ALICE_TAG, "sess-a")  # Alice's second tab
+assert rooms.member_count(code) == 2, "Two tabs are still one person"
+assert sorted(rooms.member_names(code)) == sorted([ALICE, BOB]), "Members list each person once"
+assert rooms.session_sids(code, "sess-a") == ["sid-1", "sid-3"]
 assert rooms.name_taken(code, ALICE_TAG)
+assert not rooms.name_taken(code, ALICE_TAG, except_sess="sess-a"), "Your own tabs don't take your name"
 assert not rooms.name_taken(code, tag())
-assert sorted(rooms.member_names(code)) == sorted([ALICE, BOB])
+
+# A sealed name belongs to the join that first used it: a copy is refused
+assert rooms.claim_name(code, ALICE, "sess-a") and rooms.claim_name(code, ALICE, "sess-a")
+assert not rooms.claim_name(code, ALICE, "sess-b"), "A copy of someone's sealed name was let in"
+for i in range(rooms._MAX_CLAIMS):
+    rooms.claim_name(code, f"gone-{i}", f"sess-gone-{i}")
+assert rooms.claim_name(code, sealed(), "sess-new")
+assert len(rooms._store[code]["claims"]) < 10, "Claims from people who left weren't forgotten"
+assert not rooms.claim_name(code, ALICE, "sess-b"), "Forgot the claim of someone still here"
 
 name = rooms.leave(code, "sid-1")
 assert name == ALICE
+assert rooms.member_count(code) == 2
+rooms.leave(code, "sid-3")
 assert rooms.member_count(code) == 1
 
 rooms.destroy(code)
 assert not rooms.exists(code)
+
+# People are listed in the order they joined, even after a refresh (new
+# socket), so every browser numbers lookalike names the same way
+code = rooms.create(KEY_CHECK)
+rooms.claim_name(code, ALICE, "sess-a")
+rooms.claim_name(code, BOB, "sess-b")
+rooms.join(code, "sid-b", BOB, BOB_TAG, "sess-b")
+rooms.join(code, "sid-a", ALICE, ALICE_TAG, "sess-a")
+assert rooms.member_names(code) == [ALICE, BOB], "Members should be in join order"
+rooms.leave(code, "sid-a")
+rooms.join(code, "sid-a2", ALICE, ALICE_TAG, "sess-a")
+assert rooms.member_names(code) == [ALICE, BOB], "A refresh moved someone down the list"
+rooms.destroy(code)
 
 print("Room store OK")
 
@@ -132,6 +160,8 @@ assert joined["event"] == "joined" and joined["name"] == BOB and "text" not in j
 dupe = flask_app.test_client()
 dupe.get("/cipher/")
 assert "name is taken" in post(dupe, "/cipher/join", code=code, key_check=KEY_CHECK, name_sealed=sealed(), name_tag=BOB_TAG).get_data(as_text=True)
+# ...or a copy of Bob's sealed name (everyone gets those) with a made-up tag
+assert "name is taken" in post(dupe, "/cipher/join", code=code, key_check=KEY_CHECK, name_sealed=BOB, name_tag=tag()).get_data(as_text=True)
 
 a_sock.emit("send_message", {"content": "plain text is refused"})
 a_sock.emit("send_message", "not a dict")
@@ -171,5 +201,180 @@ assert closed and closed[0]["args"][0] == {"burned": True}
 a_sock.disconnect()
 b_sock.disconnect()
 print("Burn OK")
+
+# One person can't flood a room with sockets: a new tab past the cap closes
+# their oldest, the room still sees them once, and tabs share one flood limit
+from app.sockets import events
+
+alice = flask_app.test_client()
+alice.get("/cipher/")
+res = post(alice, "/cipher/create", key_check=KEY_CHECK, name_sealed=ALICE, name_tag=ALICE_TAG)
+code = res.headers["Location"].rsplit("/", 1)[1]
+bob = flask_app.test_client()
+bob.get("/cipher/")
+assert post(bob, "/cipher/join", code=code, key_check=KEY_CHECK, name_sealed=BOB, name_tag=BOB_TAG).status_code == 302
+b_sock = socketio.test_client(flask_app, flask_test_client=bob)
+tabs = [socketio.test_client(flask_app, flask_test_client=alice) for _ in range(events.MAX_SOCKETS_PER_SESSION + 2)]
+assert [t.is_connected() for t in tabs] == [False, False] + [True] * events.MAX_SOCKETS_PER_SESSION, "Oldest tabs should be closed"
+assert "too many tabs" in [r for r in tabs[0].queue if r["name"] == "error"][-1]["args"][0]["message"]
+assert rooms.member_count(code) == 2 and len(rooms._store[code]["members"]) == 1 + events.MAX_SOCKETS_PER_SESSION
+seen = b_sock.get_received()
+assert len([r for r in seen if r["name"] == "system_message" and r["args"][0]["event"] == "joined"]) == 1, "Extra tabs shouldn't announce a join"
+assert not [r for r in seen if r["name"] == "system_message" and r["args"][0]["event"] == "left"], "A closed extra tab isn't someone leaving"
+assert sorted([r for r in seen if r["name"] == "member_update"][-1]["args"][0]["members"]) == sorted([ALICE, BOB])
+
+for i in range(6):
+    tabs[-1].emit("send_message", {"content": FAKE_CIPHERTEXT})
+    tabs[-2].emit("send_message", {"content": FAKE_CIPHERTEXT})
+assert len([r for r in b_sock.get_received() if r["name"] == "new_message"]) == 10, "Two tabs got double the flood allowance"
+
+# Closing every tab is leaving; closing one of several isn't
+tabs[-1].disconnect()
+assert not [r for r in b_sock.get_received() if r["name"] == "system_message"]
+for t in tabs[-3:-1]:
+    t.disconnect()
+assert [r["args"][0]["event"] for r in b_sock.get_received() if r["name"] == "system_message"] == ["left"]
+
+# A socket needs a session from /create or /join (with its join id)
+stranger = flask_app.test_client()
+stranger.get("/cipher/")
+assert not socketio.test_client(flask_app, flask_test_client=stranger).is_connected()
+with stranger.session_transaction() as sess:
+    sess.update(room=code, name=sealed(), name_tag=tag())  # no join id
+assert not socketio.test_client(flask_app, flask_test_client=stranger).is_connected()
+
+# Two joins with the same name that both got past /join: only the first gets a socket
+carol, carol2 = flask_app.test_client(), flask_app.test_client()
+carol_tag = tag()
+for c in (carol, carol2):
+    c.get("/cipher/")
+    assert post(c, "/cipher/join", code=code, key_check=KEY_CHECK, name_sealed=sealed(), name_tag=carol_tag).status_code == 302
+assert socketio.test_client(flask_app, flask_test_client=carol).is_connected()
+assert not socketio.test_client(flask_app, flask_test_client=carol2).is_connected(), "Duplicate name got a socket"
+
+# A copy of Bob's sealed name is refused even while he's between tabs (say
+# mid-refresh), and he can still come back to it
+b_sock.disconnect()
+mal = flask_app.test_client()
+mal.get("/cipher/")
+assert "name is taken" in post(mal, "/cipher/join", code=code, key_check=KEY_CHECK, name_sealed=BOB, name_tag=tag()).get_data(as_text=True)
+with mal.session_transaction() as sess:
+    sess.update(room=code, name=BOB, name_tag=tag(), sess="sess-mallory")  # as if it raced past /join
+assert not socketio.test_client(flask_app, flask_test_client=mal).is_connected(), "A copied sealed name got a socket"
+b_sock = socketio.test_client(flask_app, flask_test_client=bob)
+assert b_sock.is_connected(), "Bob couldn't come back to his own name"
+print("Socket caps per person OK")
+
+# Per visitor (IP), counted at the engine.io level before any session check.
+# CF-Connecting-IP only counts when the request came through nginx on loopback.
+eio = socketio.server.eio
+eio_connect, eio_disconnect = eio.handlers["connect"], eio.handlers["disconnect"]
+via_nginx = {"REMOTE_ADDR": "127.0.0.1", "HTTP_CF_CONNECTING_IP": "203.0.113.7"}
+held = [f"eio-{i}" for i in range(events.MAX_SOCKETS_PER_VISITOR)]
+assert all(eio_connect(s, dict(via_nginx)) is not False for s in held)
+assert eio_connect("eio-over", dict(via_nginx)) is False, "Visitor went past the socket cap"
+assert eio_connect("eio-other", {**via_nginx, "HTTP_CF_CONNECTING_IP": "198.51.100.9"}) is not False, "Another visitor was blocked"
+eio_disconnect(held.pop(), "client disconnect")
+assert eio_connect("eio-again", dict(via_nginx)) is not False, "A closed socket didn't free its slot"
+spoof = {"REMOTE_ADDR": "192.0.2.50", "HTTP_CF_CONNECTING_IP": "198.51.100.1"}
+spoofed = [f"eio-spoof-{i}" for i in range(events.MAX_SOCKETS_PER_VISITOR)]
+assert all(eio_connect(s, dict(spoof)) is not False for s in spoofed)
+assert eio_connect("eio-spoof-over", {**spoof, "HTTP_CF_CONNECTING_IP": "198.51.100.2"}) is False, "CF-Connecting-IP trusted from a non-loopback peer"
+# A whole IPv6 /64 is one visitor, or a fresh address per socket would dodge the cap
+v6 = [f"eio-v6-{i}" for i in range(events.MAX_SOCKETS_PER_VISITOR)]
+assert all(eio_connect(s, {**via_nginx, "HTTP_CF_CONNECTING_IP": f"2001:db8:1:2::{i + 1:x}"}) is not False
+           for i, s in enumerate(v6))
+assert eio_connect("eio-v6-over", {**via_nginx, "HTTP_CF_CONNECTING_IP": "2001:db8:1:2:ffff::9"}) is False, "IPv6 /64 went past the socket cap"
+assert eio_connect("eio-v6-next", {**via_nginx, "HTTP_CF_CONNECTING_IP": "2001:db8:1:3::1"}) is not False, "The next /64 along was blocked"
+for s in held + ["eio-again", "eio-other"] + spoofed + v6 + ["eio-v6-next"]:
+    eio_disconnect(s, "client disconnect")
+assert not events._per_visitor, "Socket counts leaked"
+
+
+# Sockets that never get into a room are hung up on after a grace period
+class FakeSocket:
+    def __init__(self, eio_sid, hung_up):
+        self.eio_sid, self.hung_up = eio_sid, hung_up
+
+    def close(self, wait=True, abort=False):
+        # Must not wait: a polling client that stops polling would hang it forever
+        assert wait is False, "Hanging up waited on the client"
+        self.hung_up.append(self.eio_sid)
+
+
+class FakeEio:
+    def __init__(self):
+        self.sockets, self.hung_up = {}, []
+
+
+fake = FakeEio()
+tab = socketio.test_client(flask_app, flask_test_client=carol)  # a real one, in the room
+assert tab.is_connected()
+for s in ("idle", "in-room", "gone"):
+    events._eio_open[s] = ("203.0.113.8", 0.0)
+events._per_visitor["203.0.113.8"] = 3
+fake.sockets = {s: FakeSocket(s, fake.hung_up) for s in ("idle", tab.eio_sid)}
+events._eio_open[tab.eio_sid] = events._eio_open.pop("in-room")
+events.sweep(fake, now=1.0)
+assert fake.hung_up == [] and "gone" not in events._eio_open, "Inside the grace period only vanished sockets go"
+events.sweep(fake, now=events._JOIN_GRACE + 1)
+assert fake.hung_up == ["idle"], "Should hang up on the idle socket only"
+assert list(events._eio_open) == [tab.eio_sid] and events._per_visitor["203.0.113.8"] == 1
+events._eio_open.clear()
+events._per_visitor.clear()
+assert events._recent, "Flood counters from the tabs above should still be there"
+events.sweep(fake, now=time.monotonic() + 60)
+assert not events._recent, "Old flood counters should be cleared"
+print("Socket caps per visitor OK")
+
+# The requests hanging off those sockets (websockets, long polls) are capped
+# per visitor too, counted while they're actually open
+statuses = []
+
+
+def call(app, environ):
+    got = []
+    app(environ, lambda status, headers: got.append(status))
+    return got[0]
+
+
+def held(environ, start_response):
+    # The next request arrives while this one is still open, like a websocket parked on a sid
+    if environ.get("next"):
+        statuses.append(call(capped, environ["next"]))
+    start_response("200 OK", [])
+    return [b"ok"]
+
+
+capped = events.cap_requests(held)
+sio = {"PATH_INFO": "/cipher/socket.io/", **via_nginx}
+chain = None
+for env in reversed([sio] * events.MAX_REQUESTS_PER_VISITOR + [
+        {**sio, "HTTP_CF_CONNECTING_IP": "198.51.100.3"},  # someone else
+        {**sio, "PATH_INFO": "/cipher/"},                   # a page, not counted
+        sio]):                                              # one too many
+    chain = {**env, "next": chain}
+assert call(capped, chain) == "200 OK"
+assert statuses[0] == "429 Too Many Requests", "Visitor went past the request cap"
+assert set(statuses[1:]) == {"200 OK"}, "Another visitor or a page got refused"
+assert not events._in_flight and call(capped, dict(sio)) == "200 OK", "Finished requests didn't free their slots"
+
+
+def broken(environ, start_response):
+    raise RuntimeError("boom")
+
+
+try:
+    events.cap_requests(broken)(dict(sio), lambda *a: None)
+except RuntimeError:
+    pass
+assert not events._in_flight, "A request that blew up kept its slot"
+
+# And it's wired in front of the real app
+events._in_flight["127.0.0.1"] = events.MAX_REQUESTS_PER_VISITOR
+assert client.get("/cipher/socket.io/?EIO=4&transport=polling").status_code == 429
+assert client.get("/cipher/").status_code == 200, "Pages shouldn't count"
+events._in_flight.clear()
+print("Request caps per visitor OK")
 
 print("All checks passed.")

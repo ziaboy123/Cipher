@@ -99,9 +99,11 @@ function appendSystem(msg) {
 
 function appendMessage(msg) {
 
-  const isOwn  = msg.name === MY_SEALED;
+  // A name two people share can't say who sent what, so then only trust what this tab sent
+  const isOwn  = msg.mine || (msg.name === MY_SEALED && !msg.shared);
   const msgTs  = new Date(msg.ts).getTime();
-  const inGroup = msg.name === lastSender && (msgTs - lastTs) < GROUP_TIMEOUT_MS && lastGroupEl;
+  const groupKey = msg.shared ? null : (isOwn ? 'you' : msg.name);
+  const inGroup = groupKey && groupKey === lastSender && (msgTs - lastTs) < GROUP_TIMEOUT_MS && lastGroupEl;
 
   if (!inGroup) {
     const group = document.createElement('div');
@@ -112,7 +114,7 @@ function appendMessage(msg) {
 
     if (!isOwn) {
       const sender = document.createElement('span');
-      sender.className = 'msg-sender';
+      sender.className = 'msg-sender' + (msg.lookalike ? ' lookalike' : '');
       sender.textContent = msg.sender;
       header.appendChild(sender);
     }
@@ -127,7 +129,7 @@ function appendMessage(msg) {
     lastGroupEl = group;
   }
 
-  lastSender = msg.name;
+  lastSender = groupKey;
   lastTs     = new Date(msg.ts).getTime();
 
   const row    = document.createElement('div');
@@ -150,7 +152,7 @@ function appendMessage(msg) {
 let typingRender = 0;
 async function syncTypingUI() {
   const render = ++typingRender;
-  const names = await Promise.all(Array.from(typingUsers, nameOf));
+  const names = await Promise.all(Array.from(typingUsers, async s => labelOf(s, await nameOf(s)).text));
   if (render !== typingRender) return;  // a newer update already drew
   if (!names.length) {
     typingDots.classList.remove('visible');
@@ -170,13 +172,22 @@ async function syncMembers(sealedNames) {
   memberCountEl.textContent = sealedNames.length;
   const members = await Promise.all(sealedNames.map(async s => ({ sealed: s, name: await nameOf(s) })));
   if (render !== membersRender) return;
-  members.sort((a, b) => a.name.localeCompare(b.name));
+  roster = new Map(members.map(m => [m.sealed, m.name]));
+  // The server lists each person once, so the same sealed name twice is two people using it
+  copiesOf = new Map();
+  sealedNames.forEach(s => copiesOf.set(s, (copiesOf.get(s) || 0) + 1));
+  members.forEach(m => { m.label = labelOf(m.sealed, m.name); });
+  warnLookalikes();
+  members.sort((a, b) => a.label.text.localeCompare(b.label.text));
   popoverList.innerHTML = '';
-  members.forEach(({ sealed, name }) => {
+  let youShown = false;
+  members.forEach(({ sealed, label }) => {
     const el = document.createElement('div');
-    el.className = 'popover-member';
-    el.textContent = name;
-    if (sealed === MY_SEALED) {
+    el.className = 'popover-member' + (label.lookalike ? ' lookalike' : '');
+    el.textContent = label.text;
+    if (label.lookalike) el.title = 'Someone else here has a name that looks like this one';
+    if (sealed === MY_SEALED && !youShown) {
+      youShown = true;
       const tag = document.createElement('span');
       tag.className = 'you-tag';
       tag.textContent = '(you)';
@@ -255,11 +266,73 @@ function nameOf(sealed) {
   return openedNames.get(sealed);
 }
 
+// ── Lookalike names ───────────────────────────────────────────────────────────
+// The server can't read names, so it can't stop two people picking names that
+// look the same (a modified browser can even send a name tag that doesn't match
+// its name). So every browser checks for itself: names that look alike get a
+// number and a warning colour.
+let roster = new Map();      // sealed name -> opened name, for everyone here now
+let copiesOf = new Map();    // sealed name -> how many people here are using it
+const lookNo = new Map();    // sealed name -> its number among lookalikes
+const nextNo = new Map();    // name skeleton -> last number handed out
+const warned = new Set();
+const sentByMe = new Set();  // this tab's messages, until the server echoes them back
+
+// { text: 'Bob' } normally, { text: 'Bob #2', lookalike: true } when someone
+// else here has a name that looks like it, and '(2 people)' on the end when
+// two people are using the very same sealed name (a copy off the member list;
+// the server refuses that, this is in case it ever doesn't)
+function labelOf(sealed, name) {
+  let text = name;
+  const skel = CipherCrypto.nameSkeleton(name);
+  const twins = [...roster].filter(([s, n]) => s !== sealed && CipherCrypto.nameSkeleton(n) === skel);
+  if (twins.length) {
+    // Numbered in the order the server lists people (who joined first), so
+    // everyone in the room sees the same numbers and the earlier one is #1
+    for (const [s, n] of [...roster, [sealed, name]]) {
+      if (lookNo.has(s) || CipherCrypto.nameSkeleton(n) !== skel) continue;
+      nextNo.set(skel, (nextNo.get(skel) || 0) + 1);
+      lookNo.set(s, nextNo.get(skel));
+    }
+  }
+  // Once a name has had a number it keeps it (and the warning) for the rest of
+  // this tab, so an impostor can't wait for the real person to leave and then
+  // carry on as plain "Bob"
+  const numbered = lookNo.has(sealed);
+  if (numbered) text = `${name} #${lookNo.get(sealed)}`;
+  const copies = copiesOf.get(sealed) || 1;
+  if (copies > 1) text += ` (${copies} people)`;
+  return { text, lookalike: numbered || twins.length > 0 || copies > 1, shared: copies > 1 };
+}
+
+// Say so once per set of lookalikes, so nobody trusts a name by mistake
+function warnLookalikes() {
+  const say = (key, text) => {
+    if (warned.has(key)) return;
+    warned.add(key);
+    enqueue(() => appendSystem({ text, ts: new Date().toISOString() }));
+  };
+  copiesOf.forEach((copies, sealed) => {
+    if (copies < 2) return;
+    say(`same ${sealed}`, `Heads up: ${copies} people here are using the exact same name, ${roster.get(sealed)}, so you can't tell their messages apart. A name can't prove who someone is.`);
+  });
+  const bySkel = new Map();
+  roster.forEach((name, sealed) => {
+    const skel = CipherCrypto.nameSkeleton(name);
+    bySkel.set(skel, [...(bySkel.get(skel) || []), sealed]);
+  });
+  bySkel.forEach(group => {
+    if (group.length < 2) return;
+    const names = group.map(s => labelOf(s, roster.get(s)).text).sort();
+    say(group.slice().sort().join(' '), `Heads up: ${names.slice(0, -1).join(', ')} and ${names.at(-1)} have names that look alike. A name can't prove who someone is.`);
+  });
+}
+
 // The server only says what happened; the browser fills in who
 async function describeEvent(msg) {
   switch (msg.event) {
-    case 'joined':   return `${await nameOf(msg.name)} joined.`;
-    case 'left':     return `${await nameOf(msg.name)} left.`;
+    case 'joined':   return `${labelOf(msg.name, await nameOf(msg.name)).text} joined.`;
+    case 'left':     return `${labelOf(msg.name, await nameOf(msg.name)).text} left.`;
     case 'locked':   return 'Channel locked. No one new can join.';
     case 'unlocked': return 'Channel unlocked.';
     default:         return msg.text || '';
@@ -272,13 +345,15 @@ async function openMessage(msg) {
     if (typeof body.t !== 'string') throw new Error('bad message');
     const sender = await nameOf(msg.name);
     // The sender's name is sealed inside the message too, so the server can't pin it on someone else
+    const label = labelOf(msg.name, sender);
     if (body.n !== sender) {
-      appendSystem({ text: `Hid a message whose sender didn't match (${sender}).`, ts: msg.ts });
+      appendSystem({ text: `Hid a message whose sender didn't match (${label.text}).`, ts: msg.ts });
       return null;
     }
-    return { ...msg, sender, content: body.t };
+    return { ...msg, sender: label.text, lookalike: label.lookalike, shared: label.shared, content: body.t };
   } catch {
-    return { ...msg, sender: await nameOf(msg.name), content: null };
+    const label = labelOf(msg.name, await nameOf(msg.name));
+    return { ...msg, sender: label.text, lookalike: label.lookalike, shared: label.shared, content: null };
   }
 }
 
@@ -299,6 +374,11 @@ function connect() {
   socket.on('disconnect', reason => {
     liveDot.className = 'live-dot disconnected';
     if (reason === 'io client disconnect') return;  // we left on purpose
+    if (reason === 'io server disconnect') {
+      // The server closed this one on purpose (e.g. too many tabs), so socket.io won't retry
+      appendSystem({ text: 'Disconnected. Refresh the page to reconnect.', ts: new Date().toISOString() });
+      return;
+    }
     appendSystem({ text: 'Connection lost. Attempting to reconnect…', ts: new Date().toISOString() });
   });
 
@@ -315,8 +395,9 @@ function connect() {
 
   socket.on('new_message', msg => {
     enqueue(async () => {
+      const mine = sentByMe.delete(msg.content);
       const opened = await openMessage(msg);
-      if (opened) appendMessage(opened);
+      if (opened) appendMessage({ ...opened, mine });
       typingUsers.delete(msg.name);
       syncTypingUI();
     });
@@ -427,6 +508,7 @@ function sendMessage() {
   }
   sendQueue = sendQueue.then(async () => {
     const content = await CipherCrypto.encrypt(cryptoKey, ROOM_CODE, { n: MY_NAME, t: text });
+    sentByMe.add(content);
     socket.emit('send_message', { content });
   }).catch(() => {
     appendSystem({ text: "Couldn't encrypt that message, so it wasn't sent.", ts: new Date().toISOString() });

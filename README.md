@@ -25,7 +25,8 @@ No user accounts. No persistent identities. No request logs, and nothing loaded 
 - **AES-256-GCM** via the browser's Web Crypto API, a fresh random IV per message
 - **Key in the link fragment.** Browsers don't send `#…` to servers, and a redirect keeps it, so the key travels with the invite link and nowhere else. It's removed from the address bar and kept in that tab's `sessionStorage` only so a refresh works
 - **The code alone isn't enough.** The server stores a one-way SHA-256 hash of the key and only lets in people whose browser presents the matching hash. It can check invite links but can't recover the key
-- **Encrypted names.** Display names are sealed with the room key in the browser too. The server only ever handles scrambled labels, and the "joined"/"left" lines are written by each browser. A keyed hash of the name (HMAC, derived from the room key) lets the server refuse a duplicate name in a room without learning it
+- **Encrypted names.** Display names are sealed with the room key in the browser too. The server only ever handles scrambled labels, and the "joined"/"left" lines are written by each browser. A keyed hash of the name's lookalike "skeleton" (HMAC, derived from the room key) lets the server refuse a duplicate or lookalike name in a room without learning it, and a copy of someone's sealed name is refused too
+- **Lookalike names.** Names are tidied in the browser before sealing (NFKC, invisible and bidi characters dropped), one alphabet per word, so "Bob" with a Cyrillic "о" or a hidden character won't get past the form. The server can't check a name it can't read, so a modified browser could still send a lookalike with a made-up tag; every browser checks for itself and numbers and flags names that look alike ("Bob #1", "B0b #2") with a heads-up in the chat. A name still can't prove who someone is: the safety code proves the link, not the person
 - **Sealed sender.** The sender's name is also encrypted inside each message, so the server can't relabel a message as someone else's, and each message is bound to its room so it can't be replayed elsewhere
 - **Safety code.** Everyone with the same key sees the same short code in the members panel; compare it to be sure you share the same link
 - **Nothing stored.** The server relays ciphertext and keeps no messages at all, so late joiners only see what's said after they arrive
@@ -118,13 +119,14 @@ run.py                 # Entrypoint — eventlet.monkey_patch() + socketio.run()
 ## Security
 
 - **CSRF** — custom token validation using `secrets.compare_digest` on all form submissions
-- **Rate limiting** — 5 room creates per hour, 20 joins per minute per visitor IP (read from Cloudflare's `CF-Connecting-IP` behind the tunnel)
-- **Flood control** — at most 10 messages per 10 seconds per connection; Socket.IO packets capped at 16 KB
+- **Rate limiting** — 5 room creates per hour, 20 joins per minute per visitor IP (read from Cloudflare's `CF-Connecting-IP`, trusted only when the request comes from nginx on loopback; an IPv6 /64 counts as one visitor)
+- **Flood control** — at most 10 messages per 10 seconds per person (all their tabs together); Socket.IO packets capped at 16 KB
+- **Connection caps** — per visitor IP, 25 open Socket.IO requests (websockets and long polls, counted while they're held) and 20 sockets; per person, 3 tabs (a new one closes the oldest); a socket that doesn't get into a room within 15 seconds is hung up on. Each open socket holds one of eventlet's 1024 greenthreads, so this stops one visitor from tying them all up
 - **XSS** — all message content rendered via `textContent`, never `innerHTML`
 - **Content Security Policy** — scripts, styles, fonts and the socket may only come from Cipher itself; no inline scripts or styles
 - **Same-origin sockets** — Socket.IO rejects connections from other sites
 - **Socket auth gate** — unauthenticated socket connections rejected on `connect`
-- **Input validation** — names (2–30 chars, restricted pattern) are checked in the browser, since the server can't read them; the server only accepts well-formed ciphertext for names and messages (≤1000 characters before encryption)
+- **Input validation** — names (2–30 chars, restricted pattern, one alphabet per word) are checked in the browser, since the server can't read them; the server only accepts well-formed ciphertext for names and messages (≤1000 characters before encryption)
 - **Session security** — `HttpOnly`, `Secure`, `SameSite=Lax` cookie; the app refuses to start without a `SECRET_KEY`
 - **No trace** — no access logs, no third-party fonts or CDNs, `no-referrer`, and pages are sent with `Cache-Control: no-store`
 
