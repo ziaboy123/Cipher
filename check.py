@@ -221,6 +221,7 @@ code = res.headers["Location"].rsplit("/", 1)[1]
 room_html = unquote(dave.get(f"/cipher/r/{code}").get_data(as_text=True))
 assert f"Room code: {code}" in room_html, "The room's report link should carry its code"
 assert "https://daniyalzia.co.uk/terms#reporting" in room_html
+assert "For ages 13 and over." in home, "Home page should state the minimum age"
 print("Report links OK")
 
 # Operator: end one room by code, only from a shell on the server
