@@ -209,6 +209,56 @@ a_sock.disconnect()
 b_sock.disconnect()
 print("Burn OK")
 
+# Reporting: the home page and the room link to the terms, privacy and a report email
+from urllib.parse import unquote
+home = client.get("/cipher/").get_data(as_text=True)
+for link in ("https://daniyalzia.co.uk/terms", "https://daniyalzia.co.uk/privacy", "mailto:mail@daniyalzia.co.uk?subject=Report%3A%20Cipher"):
+    assert link in home, f"Home page is missing {link}"
+dave = flask_app.test_client()
+dave.get("/cipher/")
+res = post(dave, "/cipher/create", key_check=KEY_CHECK, name_sealed=sealed(), name_tag=tag())
+code = res.headers["Location"].rsplit("/", 1)[1]
+room_html = unquote(dave.get(f"/cipher/r/{code}").get_data(as_text=True))
+assert f"Room code: {code}" in room_html, "The room's report link should carry its code"
+assert "https://daniyalzia.co.uk/terms#reporting" in room_html
+print("Report links OK")
+
+# Operator: end one room by code, only from a shell on the server
+from app.operator import operator_token
+TOKEN = operator_token(flask_app.config["SECRET_KEY"])
+d_sock = socketio.test_client(flask_app, flask_test_client=dave)
+other = flask_app.test_client()
+other.get("/cipher/")
+other_code = post(other, "/cipher/create", key_check=KEY_CHECK, name_sealed=sealed(), name_tag=tag()).headers["Location"].rsplit("/", 1)[1]
+o_sock = socketio.test_client(flask_app, flask_test_client=other)
+assert d_sock.is_connected() and o_sock.is_connected()
+d_sock.get_received(); o_sock.get_received()
+
+
+def end(code, token=TOKEN, path="/_operator/end-room", **kw):
+    return flask_app.test_client().post(path, json={"code": code}, headers={"X-Operator-Token": token, **kw.pop("headers", {})}, **kw)
+
+
+assert end(code, token="wrong").status_code == 404
+assert end(code, headers={"CF-Connecting-IP": "203.0.113.9"}).status_code == 404, "Came through the proxy"
+assert end(code, headers={"X-Forwarded-For": "203.0.113.9"}).status_code == 404, "Came through a proxy"
+assert end(code, environ_base={"REMOTE_ADDR": "203.0.113.9"}).status_code == 404, "Not from the server itself"
+assert end(code, path="/cipher/_operator/end-room").status_code == 404, "Must not exist under /cipher (nginx forwards that)"
+assert flask_app.test_client().get("/_operator/end-room").status_code == 405
+assert rooms.exists(code), "A refused call ended the room"
+assert end("ZZZZZZZZ").get_json()["ended"] is False
+res = end(code.lower())
+assert res.status_code == 200 and res.get_json() == {"ended": True, "code": code}
+assert not rooms.exists(code)
+closed = [r for r in d_sock.get_received() if r["name"] == "room_closed"]
+assert closed and closed[0]["args"][0] == {"ended": True}
+assert rooms.exists(other_code) and not [r for r in o_sock.get_received() if r["name"] == "room_closed"], "Another room was touched"
+d_sock.disconnect(); o_sock.disconnect()
+# The extra rooms above count against the create limit; give later checks a fresh one
+from app.extensions import limiter
+limiter.reset()
+print("Operator end-room OK")
+
 # One person can't flood a room with sockets: a new tab past the cap closes
 # their oldest, the room still sees them once, and tabs share one flood limit
 from app.sockets import events

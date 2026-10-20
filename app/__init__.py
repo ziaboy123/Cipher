@@ -1,4 +1,5 @@
 import hashlib
+from urllib.parse import quote
 from functools import cache
 from pathlib import Path
 from flask import Flask, url_for
@@ -20,6 +21,25 @@ CSP = "; ".join([
     "form-action 'self'",
     "frame-ancestors 'none'",
 ])
+
+
+# Reporting and the site-wide terms/privacy live on daniyalzia.co.uk (they cover
+# every project), so Cipher links there rather than keeping its own copies.
+TERMS_URL = "https://daniyalzia.co.uk/terms"
+PRIVACY_URL = "https://daniyalzia.co.uk/privacy"
+REPORTING_URL = "https://daniyalzia.co.uk/terms#reporting"
+REPORT_EMAIL = "mail@daniyalzia.co.uk"
+
+
+def report_mailto(code: str = "") -> str:
+    # Nobody can read Cipher's messages, so the report has to carry what happened
+    body = (
+        f"Room code: {code}\n"
+        "What happened:\n\n\n"
+        "If you can, attach a screenshot. Messages are end-to-end encrypted, "
+        "so nobody else can see them."
+    )
+    return f"mailto:{REPORT_EMAIL}?subject={quote('Report: Cipher')}&body={quote(body)}"
 
 
 @cache
@@ -52,6 +72,10 @@ def create_app() -> Flask:
         v = _file_hash.__wrapped__(path) if app.debug else _file_hash(path)
         return url_for("static", filename=filename, v=v)
     app.jinja_env.globals["asset"] = asset
+    app.jinja_env.globals.update(
+        terms_url=TERMS_URL, privacy_url=PRIVACY_URL,
+        reporting_url=REPORTING_URL, report_mailto=report_mailto,
+    )
 
     @app.after_request
     def security_headers(response):
@@ -69,6 +93,9 @@ def create_app() -> Flask:
     from app.routes.room import room_bp
     app.register_blueprint(home_bp, url_prefix='/cipher')
     app.register_blueprint(room_bp, url_prefix='/cipher')
+    # Outside /cipher on purpose: nginx never forwards it (see app/operator.py)
+    from app.operator import operator_bp
+    app.register_blueprint(operator_bp)
 
     with app.app_context():
         from app.sockets import events

@@ -122,6 +122,16 @@
   margin-top: var(--sp-1);
 }
 .popover-footnote { margin-top: var(--sp-3); }
+.popover-links > a {
+  display: inline-block;
+  font-size: var(--t-13);
+  color: var(--c-primary);
+  text-decoration: none;
+  margin-bottom: var(--sp-1);
+}
+.popover-links a:hover { color: var(--c-emphasis); text-decoration: underline; }
+.popover-links .popover-hint { display: block; }
+.popover-links .popover-hint a { color: var(--c-secondary); text-decoration: none; }
 .popover-actions { display: flex; flex-direction: column; gap: var(--sp-2); }
 .popover-action {
   width: 100%;

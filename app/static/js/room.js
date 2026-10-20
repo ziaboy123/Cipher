@@ -245,6 +245,7 @@ function showRoomClosed(data) {
   forgetKey();
   if (socket) socket.disconnect();
   if (data && data.burned) showOverlay('CHANNEL BURNED.', 'The creator ended it. Nothing was kept.');
+  else if (data && data.ended) showOverlay('CHANNEL CLOSED.', 'The site operator closed this room. Nothing was kept.');
   else                     showOverlay('CHANNEL TERMINATED.', 'This room no longer exists.');
 }
 
