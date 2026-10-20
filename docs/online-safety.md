@@ -135,7 +135,7 @@ These are the measures for a small, low-to-medium-risk service.
 
 **Conclusion:** the child user condition is treated as **met**, and Cipher is treated as likely to be accessed by children. A children's risk assessment follows.
 
-**Minimum age.** Proposed: Cipher is for people aged **13 and over**, matching the rest of the site. This is pending Daniyal's decision. Without age checks, a minimum age is a stated rule, not age assurance, and it doesn't change the conclusion above.
+**Minimum age.** Cipher is for people aged **13 and over** (decided by Daniyal, 20 October 2026), matching the rest of the site. Cipher's home page and the site's terms both say so. Without age checks, a minimum age is a stated rule, not age assurance, and it doesn't change the conclusion above.
 
 ## 6. Children's risk assessment
 
