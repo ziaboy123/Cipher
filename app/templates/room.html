@@ -43,6 +43,15 @@
       <p class="popover-hint">Everyone with the same invite link sees this code. Compare it to be sure.</p>
     </div>
 
+    <div class="popover-section popover-links">
+      <a href="{{ report_mailto(code) }}">Report a problem</a>
+      <span class="popover-hint">
+        <a href="{{ reporting_url }}" target="_blank" rel="noopener noreferrer">How reports work</a> ·
+        <a href="{{ terms_url }}" target="_blank" rel="noopener noreferrer">Terms</a> ·
+        <a href="{{ privacy_url }}" target="_blank" rel="noopener noreferrer">Privacy</a>
+      </span>
+    </div>
+
     {% if creator %}
     <div class="popover-section popover-actions">
       <button class="popover-action" id="lock-btn" type="button">Lock room</button>

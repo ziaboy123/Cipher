@@ -108,6 +108,7 @@ app/
 │   ├── base.html      # HTML shell
 │   ├── home.html      # CIPHER wordmark, create/join forms
 │   └── room.html      # Room header, message list, input
+├── operator.py        # Server-only endpoint for ending one room after a report
 ├── rooms.py           # In-memory room store (sealed names + key hash; no messages)
 ├── csrf.py            # Lightweight CSRF without Flask-WTF
 ├── config.py          # Flask config (secret key, session cookie settings)
@@ -129,6 +130,13 @@ run.py                 # Entrypoint — eventlet.monkey_patch() + socketio.run()
 - **Input validation** — names (2–30 chars, restricted pattern, one alphabet per word) are checked in the browser, since the server can't read them; the server only accepts well-formed ciphertext for names and messages (≤1000 characters before encryption)
 - **Session security** — `HttpOnly`, `Secure`, `SameSite=Lax` cookie; the app refuses to start without a `SECRET_KEY`
 - **No trace** — no access logs, no third-party fonts or CDNs, `no-referrer`, and pages are sent with `Cache-Control: no-store`
+
+## Online Safety
+
+Cipher is a user-to-user service under the UK Online Safety Act 2023. Its illegal content risk assessment, children's access assessment and children's risk assessment are in [docs/online-safety.md](docs/online-safety.md), reviewed at least yearly and before any significant change.
+
+- **Report a problem** is on the home page and in every room's members panel (an email to the operator, with the room code filled in). Reports are handled as described in the site's [terms](https://daniyalzia.co.uk/terms#reporting).
+- The operator can end a single room by its code without restarting anything: on the server, `.venv/bin/python scripts/end_room.py ROOMCODE`. It only works from the server itself (see `app/operator.py`).
 
 ## Features
 
