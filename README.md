@@ -157,3 +157,10 @@ Cipher is a user-to-user service under the UK Online Safety Act 2023. Its illega
 - Message self-destruct timers
 - Unread count in browser tab title
 - Room age counter in the header
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). That covers Cipher's own code and docs. These bundled third-party files keep their own licences, which sit next to them:
+
+- **Inter** and **JetBrains Mono** (`app/static/fonts/`) — SIL Open Font License 1.1, © 2016 The Inter Project Authors and © 2020 The JetBrains Mono Project Authors (see `Inter-OFL.txt` and `JetBrainsMono-OFL.txt`)
+- **Socket.IO client 4.7.5** (`app/static/js/vendor/`) — MIT, © 2014 Guillermo Rauch (see `socket.io-LICENSE.txt`)
